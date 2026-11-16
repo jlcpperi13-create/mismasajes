@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Reserva tu masaje</title>
+<link rel="manifest" href="manifest-cliente.json">
 <meta name="theme-color" content="#8a5a44">
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -46,6 +47,7 @@
 <header>
   <h1 id="titulo">Reserva tu masaje</h1>
   <p id="subtitulo"></p>
+  <button id="btnInstalar" class="hidden" style="margin-top:12px;background:#fff;color:var(--c);border:0;border-radius:20px;padding:8px 16px;font-weight:600;font-size:.9rem">📲 Instalar la app</button>
 </header>
 <main>
   <section id="paso1" class="card">
@@ -104,6 +106,17 @@ import { firebaseConfig } from "./firebase-config.js";
 
 const db = getFirestore(initializeApp(firebaseConfig));
 const $ = id => document.getElementById(id);
+
+// ---------- app instalable (alcance solo index.html, separado del panel) ----------
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { scope: './index.html' }).catch(console.error);
+let promptInstalar = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); promptInstalar = e; $('btnInstalar').classList.remove('hidden'); });
+$('btnInstalar').onclick = async () => {
+  if (!promptInstalar) return;
+  promptInstalar.prompt(); await promptInstalar.userChoice;
+  promptInstalar = null; $('btnInstalar').classList.add('hidden');
+};
+window.addEventListener('appinstalled', () => $('btnInstalar').classList.add('hidden'));
 
 // ---------- utilidades de horas ----------
 const toMin = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };

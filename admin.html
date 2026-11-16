@@ -295,7 +295,12 @@ function huecos(cfg, fecha, dur, ocupados, bloqueos) {
 let cfg = null, servicios = [], diaActual = hoy(), unsubDia = null, unsubPend = null;
 
 // ---------- app instalable ----------
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(console.error);
+if ('serviceWorker' in navigator) {
+  // Cada app con su propio alcance: el panel solo controla admin.html
+  navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => {
+    if (!/\/(admin|index)\.html$/.test(new URL(r.scope).pathname)) r.unregister();   // quita el registro antiguo que cubría toda la web
+  })).finally(() => navigator.serviceWorker.register('sw.js', { scope: './admin.html' }).catch(console.error));
+}
 let promptInstalar = null;
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault(); promptInstalar = e; $('btnInstalar').classList.remove('hidden');
@@ -574,7 +579,7 @@ $('aGuardar').onclick = async () => {
 
 // ---------- QR ----------
 function pintarQR() {
-  if (!$('qUrl').value) $('qUrl').value = location.href.replace(/admin\.html.*$/, '');
+  if (!$('qUrl').value) $('qUrl').value = location.href.replace(/admin\.html.*$/, 'index.html');
   $('qrImg').src = 'https://api.qrserver.com/v1/create-qr-code/?size=500x500&margin=10&data=' + encodeURIComponent($('qUrl').value);
 }
 $('qUrl').onchange = pintarQR;

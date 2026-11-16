@@ -38,12 +38,16 @@
   .cita { border-left:5px solid var(--ok); }
   .cita.pendiente { border-left-color:var(--pend); }
   .cita.cancelada { border-left-color:#ccc; opacity:.55; }
+  .cita.realizada { border-left-color:#5b7fa6; }
   .cita .hora { font-size:1.2rem; font-weight:700; }
   .cita .meta { color:var(--gris); font-size:.9rem; margin:4px 0; line-height:1.45; }
   .acciones { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .acciones a { text-decoration:none; }
   .estado { font-size:.75rem; font-weight:700; text-transform:uppercase; padding:2px 8px; border-radius:8px; background:#eee; }
-  .estado.pendiente { background:#fdf0d5; color:var(--pend); } .estado.confirmada { background:#e3f1e4; color:var(--ok); }
+  .estado.pendiente { background:#fdf0d5; color:var(--pend); } .estado.confirmada { background:#e3f1e4; color:var(--ok); } .estado.realizada { background:#e3ebf4; color:#5b7fa6; }
+  .btn.azul { background:#5b7fa6; }
+  .fila-caja { display:flex; justify-content:space-between; gap:8px; padding:8px 0; border-bottom:1px solid #f0ebe7; font-size:.92rem; }
+  .fila-caja:last-child { border-bottom:0; }
   .navdia { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
   .navdia input { flex:1; }
   .navdia button { width:46px; }
@@ -88,6 +92,7 @@
     <button data-t="masajes">Masajes</button>
     <button data-t="ajustes">Ajustes</button>
     <button data-t="qr">QR</button>
+    <button data-t="caja">Caja</button>
     <button data-t="copia">Copia</button>
   </nav>
   <main>
@@ -219,6 +224,23 @@
       </div>
     </section>
 
+    <!-- CAJA -->
+    <section id="t-caja" class="hidden">
+      <div class="card">
+        <h2>Caja · servicios realizados</h2>
+        <p class="aviso">Aquí se guarda cada masaje que marcas como <b>✓ Hecho</b>. Se queda aunque borres la cita de la agenda.</p>
+        <div class="navdia">
+          <button class="btn sec" id="cajaAnt">◀</button>
+          <input type="month" id="cajaMes">
+          <button class="btn sec" id="cajaSig">▶</button>
+        </div>
+        <div id="cajaResumen"></div>
+        <button class="btn sec full" id="cajaCsv">📊 Exportar este mes para Excel</button>
+      </div>
+      <div class="card"><h2>Por tipo de masaje</h2><div id="cajaTipos"></div></div>
+      <div class="card"><h2>Detalle</h2><div id="cajaLista"></div></div>
+    </section>
+
     <!-- COPIA DE SEGURIDAD -->
     <section id="t-copia" class="hidden">
       <div class="card">
@@ -343,6 +365,7 @@ $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => {
   if (b.dataset.t === 'bloquear') listarBloqueos();
   if (b.dataset.t === 'qr') pintarQR();
   if (b.dataset.t === 'copia') pintarUltimaCopia();
+  if (b.dataset.t === 'caja') verCaja($('cajaMes').value || hoy().slice(0, 7));
 });
 
 async function arrancar() {
@@ -375,8 +398,12 @@ function tarjetaCita(c, conFecha = false) {
       ${c.recordatorioError ? `<br><span style="color:var(--mal)">⚠️ Recordatorio no enviado: ${esc(c.recordatorioError)}</span>` : ''}</div>
     ${c.estado === 'cancelada' ? `<div class="acciones">
       <button class="btn mal peq" data-acc="eliminar" data-id="${c.id}">🗑 Eliminar</button>
+    </div>` : c.estado === 'realizada' ? `<div class="acciones">
+      <button class="btn sec peq" data-acc="deshacer" data-id="${c.id}">↩ Deshacer</button>
+      <button class="btn sec peq" data-acc="quitar" data-id="${c.id}">🗑 Quitar de la agenda</button>
     </div>` : `<div class="acciones">
       ${c.estado === 'pendiente' ? `<button class="btn ok peq" data-acc="confirmar" data-id="${c.id}">Confirmar</button>` : ''}
+      ${c.estado === 'confirmada' ? `<button class="btn azul peq" data-acc="hecha" data-id="${c.id}">✓ Hecho</button>` : ''}
       <a class="btn sec peq" href="tel:${esc(c.telefono)}">📞 Llamar</a>
       <a class="btn sec peq" target="_blank" href="https://wa.me/${tel}?text=${msg}">WhatsApp</a>
       ${mapa}
@@ -393,6 +420,29 @@ document.addEventListener('click', async e => {
     if (!confirm('¿Cancelar esta cita? El hueco volverá a quedar libre.')) return;
     const batch = writeBatch(db);
     batch.update(doc(db, 'citas', id), { estado: 'cancelada' });
+    batch.delete(doc(db, 'ocupado', id));
+    await batch.commit();
+  }
+  if (b.dataset.acc === 'hecha') {
+    const snap = await getDoc(doc(db, 'citas', id)); if (!snap.exists()) return;
+    const c = snap.data();
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'citas', id), { estado: 'realizada' });
+    batch.set(doc(db, 'caja', id), { fecha: c.fecha, mes: c.fecha.slice(0, 7), ini: c.ini, servicio: c.servicio || '',
+      importe: importe(c), nombre: c.nombre || '', lugar: c.lugar || '', creado: serverTimestamp() });
+    await batch.commit();
+  }
+  if (b.dataset.acc === 'deshacer') {
+    if (!confirm('¿Deshacer? La cita vuelve a "confirmada" y se quita de la Caja.')) return;
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'citas', id), { estado: 'confirmada' });
+    batch.delete(doc(db, 'caja', id));
+    await batch.commit();
+  }
+  if (b.dataset.acc === 'quitar') {
+    if (!confirm('¿Quitar esta cita de la agenda? El importe se queda guardado en la Caja.')) return;
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'citas', id));
     batch.delete(doc(db, 'ocupado', id));
     await batch.commit();
   }
@@ -416,28 +466,77 @@ document.addEventListener('click', async e => {
 // El precio se guarda como texto ("50", "45,50", "40 €"): lo convertimos a número
 const importe = c => { const n = parseFloat(String(c.precio ?? '').replace(',', '.').replace(/[^\d.]/g, '')); return isNaN(n) ? 0 : n; };
 const eur = n => n.toLocaleString('es-ES', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }) + ' €';
-function sumar(l) {
+// Totales: lo HECHO sale de la Caja (no se pierde aunque borres citas);
+// lo confirmado y lo pendiente sale de la agenda.
+const sumaCaja = l => ({ hecho: l.reduce((s, x) => s + (Number(x.importe) || 0), 0), nHecho: l.length });
+function sumaAgenda(l) {
   const conf = l.filter(c => c.estado === 'confirmada'), pend = l.filter(c => c.estado === 'pendiente');
-  return { total: conf.reduce((s, c) => s + importe(c), 0), n: conf.length,
+  return { prev: conf.reduce((s, c) => s + importe(c), 0), nPrev: conf.length,
            pend: pend.reduce((s, c) => s + importe(c), 0), nPend: pend.length };
 }
-let totDia = null, totMes = null, mesActual = null, unsubMes = null;
+let cajaDia = null, agDia = null, cajaMesT = null, agMes = null, mesActual = null, unsubMes = null, unsubMesCaja = null, unsubDiaCaja = null;
+const pl = (n, s, p) => n === 1 ? s : p;
 function pintarTotales() {
   const nombreMes = new Date(diaActual + 'T12:00:00').toLocaleDateString('es-ES', { month: 'long' });
-  const caja = (titulo, t) => !t ? '' : `<div class="total"><small>${titulo}</small><b>${eur(t.total)}</b>
-    <small>${t.n} cita${t.n === 1 ? '' : 's'} confirmada${t.n === 1 ? '' : 's'}</small>
-    ${t.nPend ? `<div class="extra">+ ${eur(t.pend)} pendiente${t.nPend === 1 ? '' : 's'} (${t.nPend})</div>` : ''}</div>`;
-  $('totales').innerHTML = caja('Este día', totDia) + caja('Mes de ' + nombreMes, totMes);
+  const caja = (titulo, cj, ag) => {
+    if (!cj || !ag) return `<div class="total"><small>${titulo}</small><b>…</b></div>`;
+    return `<div class="total"><small>${titulo}</small><b>${eur(cj.hecho)}</b>
+      <small>${cj.nHecho} ${pl(cj.nHecho, 'masaje hecho', 'masajes hechos')}</small>
+      ${ag.nPrev ? `<div class="extra" style="color:var(--ok)">+ ${eur(ag.prev)} por hacer (${ag.nPrev})</div>` : ''}
+      ${ag.nPend ? `<div class="extra">+ ${eur(ag.pend)} ${pl(ag.nPend, 'pendiente', 'pendientes')} (${ag.nPend})</div>` : ''}</div>`;
+  };
+  $('totales').innerHTML = caja('Este día', cajaDia, agDia) + caja('Mes de ' + nombreMes, cajaMesT, agMes);
 }
 function escucharMes(f) {
   const mes = f.slice(0, 7);
   if (mes === mesActual) return;
-  mesActual = mes;
+  mesActual = mes; cajaMesT = agMes = null;
   if (unsubMes) unsubMes();
+  if (unsubMesCaja) unsubMesCaja();
   unsubMes = onSnapshot(query(collection(db, 'citas'), where('fecha', '>=', mes + '-01'), where('fecha', '<=', mes + '-31')), snap => {
-    totMes = sumar(snap.docs.map(d => d.data())); pintarTotales();
+    agMes = sumaAgenda(snap.docs.map(d => d.data())); pintarTotales();
+  });
+  unsubMesCaja = onSnapshot(query(collection(db, 'caja'), where('mes', '==', mes)), snap => {
+    cajaMesT = sumaCaja(snap.docs.map(d => d.data())); pintarTotales();
   });
 }
+
+// ---------- CAJA (pestaña) ----------
+let unsubCaja = null, cajaDatos = [];
+function verCaja(mes) {
+  $('cajaMes').value = mes;
+  if (unsubCaja) unsubCaja();
+  $('cajaResumen').innerHTML = '<p class="aviso">Cargando…</p>';
+  unsubCaja = onSnapshot(query(collection(db, 'caja'), where('mes', '==', mes)), snap => {
+    cajaDatos = snap.docs.map(d => d.data()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.ini - b.ini);
+    const t = sumaCaja(cajaDatos);
+    const nombre = new Date(mes + '-15T12:00:00').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+    $('cajaResumen').innerHTML = `<div class="total" style="text-align:center"><small>Total ${nombre}</small>
+      <b style="font-size:2rem">${eur(t.hecho)}</b><small>${t.nHecho} ${pl(t.nHecho, 'masaje realizado', 'masajes realizados')}</small></div>`;
+    const tipos = {};
+    cajaDatos.forEach(x => { const k = x.servicio || '—'; tipos[k] = tipos[k] || { n: 0, s: 0 }; tipos[k].n++; tipos[k].s += Number(x.importe) || 0; });
+    $('cajaTipos').innerHTML = Object.keys(tipos).length
+      ? Object.entries(tipos).sort((a, b) => b[1].s - a[1].s).map(([k, v]) =>
+          `<div class="fila-caja"><span>${esc(k)} <small class="aviso">× ${v.n}</small></span><b>${eur(v.s)}</b></div>`).join('')
+      : '<p class="aviso">Sin masajes este mes.</p>';
+    $('cajaLista').innerHTML = cajaDatos.length ? cajaDatos.map(x =>
+      `<div class="fila-caja"><span>${new Date(x.fecha + 'T12:00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} · ${toHM(x.ini)}<br>
+        <small class="aviso">${esc(x.servicio)} · ${esc(x.nombre)}</small></span><b>${eur(Number(x.importe) || 0)}</b></div>`).join('')
+      : '<p class="aviso">Cuando marques un masaje como ✓ Hecho aparecerá aquí.</p>';
+  });
+}
+const sumaMes = (m, n) => { const [y, mm] = m.split('-').map(Number); const d = new Date(y, mm - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+$('cajaMes').onchange = () => $('cajaMes').value && verCaja($('cajaMes').value);
+$('cajaAnt').onclick = () => verCaja(sumaMes($('cajaMes').value || hoy().slice(0, 7), -1));
+$('cajaSig').onclick = () => verCaja(sumaMes($('cajaMes').value || hoy().slice(0, 7), 1));
+$('cajaCsv').onclick = () => {
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const filas = cajaDatos.map(x => [x.fecha, toHM(x.ini), x.servicio, x.nombre, LUGAR_TXT[x.lugar] || x.lugar,
+    String(Number(x.importe) || 0).replace('.', ',')].map(q).join(';'));
+  const total = sumaCaja(cajaDatos).hecho;
+  descargar(`caja-${$('cajaMes').value}.csv`, '﻿' + [['Fecha', 'Hora', 'Masaje', 'Cliente', 'Lugar', 'Importe'].map(q).join(';'), ...filas,
+    ['', '', '', '', 'TOTAL', String(total).replace('.', ',')].map(q).join(';')].join('\r\n'), 'text/csv;charset=utf-8');
+};
 
 function escucharPendientes() {
   if (unsubPend) unsubPend();
@@ -452,7 +551,7 @@ function escucharPendientes() {
 }
 
 async function verDia(f) {
-  diaActual = f; $('diaSel').value = f;
+  diaActual = f; $('diaSel').value = f; cajaDia = agDia = null;
   $('diaTitulo').textContent = fechaLarga(f) + (f === hoy() ? ' (hoy)' : '');
   const bl = await getDocs(query(collection(db, 'bloqueos'), where('fecha', '==', f)));
   $('bloqDia').innerHTML = bl.docs.map(d => { const b = d.data();
@@ -463,7 +562,11 @@ async function verDia(f) {
     const canceladas = l.filter(c => c.estado === 'cancelada').map(c => c.id);
     $('citasDia').innerHTML = (l.length ? l.map(c => tarjetaCita(c)).join('') : '<p class="aviso">No hay citas este día.</p>')
       + (canceladas.length > 1 ? `<button class="btn sec full" data-acc="eliminarCanceladas" data-ids="${canceladas.join(',')}">🗑 Eliminar las ${canceladas.length} canceladas de este día</button>` : '');
-    totDia = sumar(l); pintarTotales();
+    agDia = sumaAgenda(l); pintarTotales();
+  });
+  if (unsubDiaCaja) unsubDiaCaja();
+  unsubDiaCaja = onSnapshot(query(collection(db, 'caja'), where('fecha', '==', f)), snap => {
+    cajaDia = sumaCaja(snap.docs.map(d => d.data())); pintarTotales();
   });
   escucharMes(f);
 }
@@ -639,7 +742,7 @@ $('qUrl').onchange = pintarQR;
 $('qCopiar').onclick = async () => { try { await navigator.clipboard.writeText($('qUrl').value); $('qCopiar').textContent = 'Copiado ✓'; } catch {} };
 
 // ---------- COPIA DE SEGURIDAD ----------
-const COLECCIONES = ['config', 'servicios', 'bloqueos', 'citas', 'ocupado'];
+const COLECCIONES = ['config', 'servicios', 'bloqueos', 'citas', 'ocupado', 'caja'];
 const limpiar = v => (v && typeof v.toDate === 'function') ? { __fecha: v.toDate().toISOString() } : v;
 const restaurarValor = v => (v && typeof v === 'object' && v.__fecha) ? new Date(v.__fecha) : v;
 

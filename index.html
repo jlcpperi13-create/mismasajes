@@ -35,6 +35,12 @@
   .error { color:#b3261e; margin-top:10px; }
   .resumen { background:var(--c2); border-radius:10px; padding:12px; font-size:.95rem; line-height:1.5; }
   .ok { font-size:3rem; text-align:center; }
+  .micita { border-left:5px solid var(--c); background:var(--c2); border-radius:10px; padding:10px 12px; margin-bottom:8px; line-height:1.45; }
+  .micita.confirmada { border-left-color:#2e7d32; } .micita.pendiente { border-left-color:#d98e04; }
+  .micita.cancelada { border-left-color:#bbb; opacity:.6; }
+  .etq { font-size:.72rem; font-weight:700; text-transform:uppercase; padding:2px 8px; border-radius:8px; float:right; }
+  .etq.confirmada { background:#e3f1e4; color:#2e7d32; } .etq.pendiente { background:#fdf0d5; color:#d98e04; } .etq.cancelada { background:#eee; color:#777; }
+  .contacto a { color:var(--c); font-weight:600; }
   .privacidad { margin-top:14px; }
   .check { display:flex; gap:10px; align-items:flex-start; color:var(--txt); font-size:.92rem; margin:0; }
   .check input { width:auto; margin-top:3px; transform:scale(1.3); flex:0 0 auto; }
@@ -50,6 +56,12 @@
   <button id="btnInstalar" class="hidden" style="margin-top:12px;background:#fff;color:var(--c);border:0;border-radius:20px;padding:8px 16px;font-weight:600;font-size:.9rem">📲 Instalar la app</button>
 </header>
 <main>
+  <section id="misCitas" class="card hidden">
+    <h2>Tus citas</h2>
+    <div id="listaMisCitas"></div>
+    <p id="contactoCambio" class="aviso contacto"></p>
+  </section>
+
   <section id="paso1" class="card">
     <h2>1. Elige el masaje</h2>
     <div id="listaServicios"><p class="aviso">Cargando…</p></div>
@@ -124,6 +136,9 @@ const toHM = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m %
 const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+// ---------- "Tus citas": se guardan en este móvil ----------
+const leerMias = () => { try { return JSON.parse(localStorage.getItem('misCitas') || '[]'); } catch { return []; } };
+const guardarMias = l => { try { localStorage.setItem('misCitas', JSON.stringify(l)); } catch {} };
 const fechaLarga = f => new Date(f + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -285,6 +300,7 @@ $('form').onsubmit = async e => {
     });
     batch.set(doc(db, 'ocupado', ref.id), { fecha: sel.fecha, ini: sel.hora, fin: sel.hora + dur });
     await batch.commit();
+    guardarMias([...leerMias(), { id: ref.id, fecha: sel.fecha, ini: sel.hora, servicio: sel.servicio.nombre }]);
 
     ['paso1', 'paso2', 'paso3', 'paso4'].forEach(p => $(p).classList.add('hidden'));
     $('hecho').classList.remove('hidden');
@@ -293,7 +309,8 @@ $('form').onsubmit = async e => {
       <h2 style="text-align:center">${estado === 'confirmada' ? '¡Reserva confirmada!' : '¡Solicitud enviada!'}</h2>
       <div class="resumen">${esc(sel.servicio.nombre)}<br>${fechaLarga(sel.fecha)} a las <b>${toHM(sel.hora)}</b></div>
       <p class="aviso">${estado === 'confirmada' ? 'Te esperamos.' : 'Te contactaremos en breve para confirmarla.'}</p>
-      <button class="btn" onclick="location.reload()">Hacer otra reserva</button>`;
+      <p class="aviso">Puedes volver a ver tu cita cuando quieras abriendo esta misma página.</p>
+      <button class="btn" onclick="location.reload()">Ver mis citas / hacer otra reserva</button>`;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (err) {
     console.error(err);
@@ -303,7 +320,34 @@ $('form').onsubmit = async e => {
   }
 };
 
-init().catch(err => { console.error(err); $('listaServicios').innerHTML = '<p class="error">No se pudo cargar. Inténtalo más tarde.</p>'; });
+async function pintarMisCitas() {
+  const hoyStr = ymd(new Date());
+  const futuras = leerMias().filter(x => x.fecha >= hoyStr);
+  if (!futuras.length) { guardarMias([]); return; }
+  const filas = [], vivas = [];
+  for (const x of futuras.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.ini - b.ini)) {
+    let estado = 'pendiente', dato = x;
+    try {
+      const d = await getDoc(doc(db, 'citas', x.id));
+      if (d.exists()) { dato = { ...x, ...d.data() }; estado = d.data().estado; } else estado = 'cancelada';
+    } catch { estado = '…'; }
+    if (estado === 'realizada') continue;
+    vivas.push(x);
+    const txt = { pendiente: 'Pendiente de confirmar', confirmada: 'Confirmada', cancelada: 'Cancelada' }[estado] || estado;
+    filas.push(`<div class="micita ${estado}"><span class="etq ${estado}">${txt}</span>
+      <b>${esc(dato.servicio)}</b><br>${fechaLarga(dato.fecha)} a las <b>${toHM(dato.ini)}</b></div>`);
+  }
+  guardarMias(vivas);
+  if (!filas.length) return;
+  $('listaMisCitas').innerHTML = filas.join('');
+  const t = cfg?.telefonoContacto;
+  $('contactoCambio').innerHTML = t
+    ? `¿Necesitas cambiarla o cancelarla? Llama al <a href="tel:${esc(t)}">${esc(t)}</a> o escribe por <a target="_blank" href="https://wa.me/${String(t).replace(/\D/g, '').replace(/^(\d{9})$/, '34$1')}">WhatsApp</a>.`
+    : '';
+  $('misCitas').classList.remove('hidden');
+}
+
+init().then(pintarMisCitas).catch(err => { console.error(err); $('listaServicios').innerHTML = '<p class="error">No se pudo cargar. Inténtalo más tarde.</p>'; });
 </script>
 </body>
 </html>

@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Cambia el correo por el de ella (el mismo que en firebase-config.js)
+    function esAdmin() {
+      return request.auth != null && request.auth.token.email == "CORREO_DE_ELLA@gmail.com";
+    }
+
+    // Ajustes, masajes y bloqueos: cualquiera los lee, solo ella los cambia
+    match /config/{id}    { allow read: if true; allow write: if esAdmin(); }
+    match /servicios/{id} { allow read: if true; allow write: if esAdmin(); }
+    match /bloqueos/{id}  { allow read: if true; allow write: if esAdmin(); }
+
+    // Huecos ocupados: solo fecha y horas, sin datos del cliente
+    match /ocupado/{id} {
+      allow read: if true;
+      allow create: if esAdmin() || (
+        request.resource.data.keys().hasOnly(['fecha', 'ini', 'fin']) &&
+        request.resource.data.ini is int &&
+        request.resource.data.fin is int &&
+        request.resource.data.fin > request.resource.data.ini &&
+        request.resource.data.fin - request.resource.data.ini <= 300
+      );
+      allow update, delete: if esAdmin();
+    }
+
+    // Citas con datos del cliente: el cliente solo puede crearla, nunca leer las de otros
+    match /citas/{id} {
+      allow read, update, delete: if esAdmin();
+      allow create: if esAdmin() || (
+        request.resource.data.nombre is string && request.resource.data.nombre.size() < 100 &&
+        request.resource.data.telefono is string && request.resource.data.telefono.size() < 30 &&
+        (request.resource.data.estado == 'pendiente' ||
+          (request.resource.data.estado == 'confirmada' &&
+           get(/databases/$(database)/documents/config/ajustes).data.autoConfirmar == true))
+      );
+    }
+  }
+}

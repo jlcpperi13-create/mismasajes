@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mi agenda</title>
+<style>
+  :root { --c:#8a5a44; --c2:#f6efe9; --txt:#2b2420; --gris:#8c817a; --ok:#2e7d32; --pend:#d98e04; --mal:#b3261e; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:#fbf8f5; color:var(--txt); }
+  header { background:var(--c); color:#fff; padding:14px 16px; display:flex; justify-content:space-between; align-items:center; }
+  header h1 { margin:0; font-size:1.15rem; }
+  header button { background:transparent; border:1px solid #fff8; color:#fff; border-radius:8px; padding:6px 10px; }
+  nav { display:flex; overflow-x:auto; background:#fff; border-bottom:1px solid #eee; position:sticky; top:0; z-index:5; }
+  nav button { flex:0 0 auto; padding:12px 14px; border:0; background:none; font-size:.95rem; color:var(--gris); border-bottom:3px solid transparent; }
+  nav button.act { color:var(--c); border-bottom-color:var(--c); font-weight:600; }
+  .badge { background:var(--pend); color:#fff; border-radius:10px; padding:1px 7px; font-size:.75rem; margin-left:4px; }
+  main { max-width:620px; margin:0 auto; padding:12px; }
+  .card { background:#fff; border-radius:14px; padding:14px; margin-bottom:12px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+  .card h2 { margin:0 0 10px; font-size:1.05rem; color:var(--c); }
+  .hidden { display:none !important; }
+  label { display:block; font-size:.88rem; margin:10px 0 4px; color:var(--gris); }
+  input, select, textarea { width:100%; padding:11px; border:1px solid #ddd; border-radius:10px; font-size:1rem; font-family:inherit; }
+  input[type=checkbox] { width:auto; transform:scale(1.3); margin-right:8px; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .row > * { flex:1; }
+  .btn { padding:12px 14px; border:0; border-radius:10px; background:var(--c); color:#fff; font-size:1rem; font-weight:600; cursor:pointer; }
+  .btn.full { width:100%; margin-top:14px; }
+  .btn.sec { background:var(--c2); color:var(--c); }
+  .btn.ok { background:var(--ok); } .btn.mal { background:var(--mal); }
+  .btn.peq { padding:8px 10px; font-size:.88rem; }
+  .cita { border-left:5px solid var(--ok); }
+  .cita.pendiente { border-left-color:var(--pend); }
+  .cita.cancelada { border-left-color:#ccc; opacity:.55; }
+  .cita .hora { font-size:1.2rem; font-weight:700; }
+  .cita .meta { color:var(--gris); font-size:.9rem; margin:4px 0; line-height:1.45; }
+  .acciones { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .acciones a { text-decoration:none; }
+  .estado { font-size:.75rem; font-weight:700; text-transform:uppercase; padding:2px 8px; border-radius:8px; background:#eee; }
+  .estado.pendiente { background:#fdf0d5; color:var(--pend); } .estado.confirmada { background:#e3f1e4; color:var(--ok); }
+  .navdia { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .navdia input { flex:1; }
+  .navdia button { width:46px; }
+  .bloq { background:#f1f1f1; border-radius:10px; padding:10px; margin-bottom:8px; font-size:.92rem; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(72px,1fr)); gap:6px; }
+  .chip { padding:9px 4px; border:2px solid #eee; border-radius:10px; background:#fff; font-weight:600; }
+  .chip.sel { border-color:var(--c); background:var(--c2); }
+  .aviso { color:var(--gris); font-size:.92rem; }
+  .alerta { background:#fdecea; color:var(--mal); border-radius:10px; padding:10px; margin-top:10px; font-size:.92rem; }
+  .exito { background:#e3f1e4; color:var(--ok); border-radius:10px; padding:10px; margin-top:10px; font-size:.92rem; }
+  .dia { display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:6px; align-items:center; margin-bottom:6px; }
+  .serv { display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:6px; align-items:center; margin-bottom:8px; }
+  #login { max-width:380px; margin:40px auto; }
+  #qrImg { display:block; margin:12px auto; max-width:260px; width:100%; }
+</style>
+</head>
+<body>
+
+<div id="login" class="card hidden">
+  <h2>Entrar a mi agenda</h2>
+  <form id="formLogin">
+    <label>Correo</label><input id="lEmail" type="email" required autocomplete="username">
+    <label>Contraseña</label><input id="lPass" type="password" required autocomplete="current-password">
+    <button class="btn full">Entrar</button>
+    <p id="lError" class="alerta hidden"></p>
+  </form>
+</div>
+
+<div id="app" class="hidden">
+  <header><h1 id="hTitulo">Mi agenda</h1><button id="btnSalir">Salir</button></header>
+  <nav id="tabs">
+    <button data-t="agenda" class="act">Agenda<span id="badge" class="badge hidden"></span></button>
+    <button data-t="nueva">+ Cita</button>
+    <button data-t="bloquear">Bloquear</button>
+    <button data-t="horario">Horario</button>
+    <button data-t="masajes">Masajes</button>
+    <button data-t="ajustes">Ajustes</button>
+    <button data-t="qr">QR</button>
+  </nav>
+  <main>
+    <!-- AGENDA -->
+    <section id="t-agenda">
+      <div id="pendientesBox" class="hidden">
+        <h3 style="color:var(--pend);margin:4px 0 8px">Pendientes de confirmar</h3>
+        <div id="pendientes"></div>
+      </div>
+      <div class="navdia">
+        <button class="btn sec" id="diaAnt">◀</button>
+        <input type="date" id="diaSel">
+        <button class="btn sec" id="diaSig">▶</button>
+      </div>
+      <p id="diaTitulo" style="font-weight:600;margin:0 0 8px"></p>
+      <div id="bloqDia"></div>
+      <div id="citasDia"></div>
+    </section>
+
+    <!-- NUEVA CITA -->
+    <section id="t-nueva" class="hidden">
+      <div class="card">
+        <h2>Apuntar cita (llamadas, WhatsApp…)</h2>
+        <label>Masaje</label><select id="nServ"></select>
+        <label>Día</label><input type="date" id="nFecha">
+        <label>Huecos libres</label><div id="nHuecos" class="grid"><p class="aviso">Elige masaje y día.</p></div>
+        <label>…u otra hora</label><input type="time" id="nHora" step="300">
+        <p id="nSolape" class="alerta hidden"></p>
+        <label>Nombre</label><input id="nNombre">
+        <label>Teléfono</label><input id="nTel" type="tel">
+        <label>Lugar</label>
+        <select id="nLugar"><option value="hotel">Hotel</option><option value="domicilio">Domicilio</option><option value="centro">Centro</option></select>
+        <label>Dirección / hotel y habitación</label><input id="nDir">
+        <label>Notas</label><textarea id="nNotas" rows="2"></textarea>
+        <button class="btn full" id="nGuardar">Guardar cita</button>
+        <p id="nMsg" class="hidden"></p>
+      </div>
+    </section>
+
+    <!-- BLOQUEAR -->
+    <section id="t-bloquear" class="hidden">
+      <div class="card">
+        <h2>Bloquear horas o días</h2>
+        <p class="aviso">Lo que bloquees deja de salir a los clientes. El resto de huecos se reorganiza solo.</p>
+        <div class="row"><div><label>Desde el día</label><input type="date" id="bDesde"></div>
+                         <div><label>Hasta el día (opcional)</label><input type="date" id="bHasta"></div></div>
+        <label style="display:flex;align-items:center;margin-top:14px"><input type="checkbox" id="bTodo" checked>Todo el día</label>
+        <div id="bHoras" class="row hidden"><div><label>De</label><input type="time" id="bIni" value="14:00"></div>
+                                             <div><label>A</label><input type="time" id="bFin" value="16:00"></div></div>
+        <button class="btn full" id="bGuardar">Bloquear</button>
+        <div id="bMsg"></div>
+      </div>
+      <div class="card"><h2>Bloqueos próximos</h2><div id="bLista"></div></div>
+    </section>
+
+    <!-- HORARIO -->
+    <section id="t-horario" class="hidden">
+      <div class="card">
+        <h2>Horario habitual</h2>
+        <p class="aviso">Marca los días que trabajas y de qué hora a qué hora.</p>
+        <div id="hDias"></div>
+        <button class="btn full" id="hGuardar">Guardar horario</button>
+        <p id="hMsg" class="exito hidden">Horario guardado ✓</p>
+      </div>
+    </section>
+
+    <!-- MASAJES -->
+    <section id="t-masajes" class="hidden">
+      <div class="card">
+        <h2>Tipos de masaje</h2>
+        <p class="aviso">Nombre, minutos y precio. El precio es opcional: si lo dejas vacío no se muestra.</p>
+        <div class="serv aviso" style="margin-bottom:4px"><span>Nombre</span><span>Min</span><span>€</span><span></span></div>
+        <div id="sLista"></div>
+        <button class="btn sec full" id="sNuevo">+ Añadir masaje</button>
+        <button class="btn full" id="sGuardar">Guardar masajes</button>
+        <p id="sMsg" class="exito hidden">Guardado ✓</p>
+      </div>
+    </section>
+
+    <!-- AJUSTES -->
+    <section id="t-ajustes" class="hidden">
+      <div class="card">
+        <h2>Ajustes</h2>
+        <label>Nombre que ven los clientes</label><input id="aNombre">
+        <label>Mensaje de bienvenida (opcional)</label><input id="aMensaje">
+        <label style="display:flex;align-items:center;margin-top:14px"><input type="checkbox" id="aPrecios">Mostrar precios a los clientes</label>
+        <label style="display:flex;align-items:center"><input type="checkbox" id="aAuto">Confirmar reservas automáticamente</label>
+        <p class="aviso" style="margin-top:2px">Si está desmarcado, cada reserva te llega como pendiente y la confirmas tú.</p>
+        <label>Dónde das masajes</label>
+        <label style="display:flex;align-items:center"><input type="checkbox" id="aHotel">Hoteles</label>
+        <label style="display:flex;align-items:center"><input type="checkbox" id="aDom">Domicilio</label>
+        <label style="display:flex;align-items:center"><input type="checkbox" id="aCentro">Mi centro</label>
+        <div class="row">
+          <div><label>Margen entre citas (min)</label><input type="number" id="aMargen" min="0" step="5"></div>
+          <div><label>Huecos cada (min)</label>
+            <select id="aIntervalo"><option>15</option><option>30</option><option>60</option></select></div>
+        </div>
+        <div class="row">
+          <div><label>Antelación mínima (min)</label><input type="number" id="aAntel" min="0" step="15"></div>
+          <div><label>Días visibles</label><input type="number" id="aDias" min="1" max="120"></div>
+        </div>
+        <button class="btn full" id="aGuardar">Guardar ajustes</button>
+        <p id="aMsg" class="exito hidden">Guardado ✓</p>
+      </div>
+    </section>
+
+    <!-- QR -->
+    <section id="t-qr" class="hidden">
+      <div class="card">
+        <h2>Código QR para reservar</h2>
+        <p class="aviso">Para tarjetas, recepción de hoteles, Instagram… Mantén pulsada la imagen para guardarla.</p>
+        <label>Enlace de reservas</label><input id="qUrl">
+        <img id="qrImg" alt="Código QR">
+        <button class="btn sec full" id="qCopiar">Copiar enlace</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where,
+         onSnapshot, writeBatch, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js";
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app), db = getFirestore(app);
+const $ = id => document.getElementById(id);
+
+// ---------- utilidades ----------
+const toMin = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
+const toHM = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const hoy = () => ymd(new Date());
+const sumaDias = (f, n) => { const d = new Date(f + 'T12:00:00'); d.setDate(d.getDate() + n); return ymd(d); };
+const fechaLarga = f => new Date(f + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const DIAS_L = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+const LUGAR_TXT = { hotel: 'Hotel', domicilio: 'Domicilio', centro: 'Centro' };
+const tel34 = t => { let d = String(t || '').replace(/\D/g, ''); if (d.length === 9) d = '34' + d; return d; };
+const flash = (id, ms = 2500) => { $(id).classList.remove('hidden'); setTimeout(() => $(id).classList.add('hidden'), ms); };
+
+const DEFAULT_CFG = {
+  nombre: 'Reserva tu masaje', mensaje: '',
+  horario: {
+    0: { activo: false, inicio: '10:00', fin: '14:00' },
+    1: { activo: true, inicio: '10:00', fin: '20:00' }, 2: { activo: true, inicio: '10:00', fin: '20:00' },
+    3: { activo: true, inicio: '10:00', fin: '20:00' }, 4: { activo: true, inicio: '10:00', fin: '20:00' },
+    5: { activo: true, inicio: '10:00', fin: '20:00' }, 6: { activo: true, inicio: '10:00', fin: '14:00' }
+  },
+  intervalo: 30, margen: 30, antelacion: 120, diasVista: 30,
+  autoConfirmar: false, mostrarPrecios: true,
+  lugares: { hotel: true, domicilio: true, centro: false }
+};
+
+function huecos(cfg, fecha, dur, ocupados, bloqueos) {
+  const dow = new Date(fecha + 'T12:00:00').getDay();
+  const h = cfg.horario?.[dow];
+  if (!h || !h.activo) return [];
+  const ini = toMin(h.inicio), fin = toMin(h.fin);
+  const paso = Number(cfg.intervalo) || 30, margen = Number(cfg.margen) || 0;
+  const busy = [...ocupados.map(o => [o.ini - margen, o.fin + margen]),
+                ...bloqueos.map(b => b.todoDia ? [0, 1440] : [b.ini, b.fin])];
+  let minimo = -1;
+  if (fecha === hoy()) { const n = new Date(); minimo = n.getHours() * 60 + n.getMinutes(); }
+  const r = [];
+  for (let t = ini; t + dur <= fin; t += paso) {
+    if (t < minimo) continue;
+    if (busy.some(([a, b]) => t < b && t + dur > a)) continue;
+    r.push(t);
+  }
+  return r;
+}
+
+let cfg = null, servicios = [], diaActual = hoy(), unsubDia = null, unsubPend = null;
+
+// ---------- login ----------
+onAuthStateChanged(auth, async user => {
+  if (user && user.email === ADMIN_EMAIL) {
+    $('login').classList.add('hidden'); $('app').classList.remove('hidden');
+    await arrancar();
+  } else {
+    if (user) await signOut(auth);
+    $('app').classList.add('hidden'); $('login').classList.remove('hidden');
+  }
+});
+$('formLogin').onsubmit = async e => {
+  e.preventDefault(); $('lError').classList.add('hidden');
+  try { await signInWithEmailAndPassword(auth, $('lEmail').value.trim(), $('lPass').value); }
+  catch { $('lError').textContent = 'Correo o contraseña incorrectos.'; $('lError').classList.remove('hidden'); }
+};
+$('btnSalir').onclick = () => signOut(auth);
+
+// ---------- pestañas ----------
+$('tabs').querySelectorAll('button').forEach(b => b.onclick = () => {
+  $('tabs').querySelectorAll('button').forEach(x => x.classList.toggle('act', x === b));
+  document.querySelectorAll('main > section').forEach(s => s.classList.add('hidden'));
+  $('t-' + b.dataset.t).classList.remove('hidden');
+  if (b.dataset.t === 'bloquear') listarBloqueos();
+  if (b.dataset.t === 'qr') pintarQR();
+});
+
+async function arrancar() {
+  const c = await getDoc(doc(db, 'config', 'ajustes'));
+  if (!c.exists()) { await setDoc(doc(db, 'config', 'ajustes'), DEFAULT_CFG); cfg = structuredClone(DEFAULT_CFG); }
+  else cfg = c.data();
+  $('hTitulo').textContent = cfg.nombre || 'Mi agenda';
+  await cargarServicios();
+  pintarHorario(); pintarAjustes();
+  $('diaSel').value = diaActual; $('nFecha').value = hoy(); $('bDesde').value = hoy();
+  escucharPendientes(); verDia(diaActual);
+}
+
+// ---------- AGENDA ----------
+function tarjetaCita(c, conFecha = false) {
+  const tel = tel34(c.telefono);
+  const msg = encodeURIComponent(`Hola ${c.nombre}, te confirmo tu cita de ${c.servicio} el ${fechaLarga(c.fecha)} a las ${toHM(c.ini)}. ¡Hasta pronto!`);
+  const mapa = c.direccion ? `<a class="btn sec peq" target="_blank" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.direccion)}">🗺 Mapa</a>` : '';
+  return `<div class="card cita ${c.estado}">
+    <div class="row" style="justify-content:space-between">
+      <span class="hora" style="flex:0">${conFecha ? `<small style="font-weight:400">${fechaLarga(c.fecha)}</small><br>` : ''}${toHM(c.ini)}–${toHM(c.fin)}</span>
+      <span style="flex:0"><span class="estado ${c.estado}">${c.estado}</span></span>
+    </div>
+    <div><b>${esc(c.servicio)}</b>${c.precio ? ` · ${esc(c.precio)} €` : ''}</div>
+    <div class="meta">👤 ${esc(c.nombre)} · ${esc(c.telefono)}<br>
+      📍 ${LUGAR_TXT[c.lugar] || ''}${c.direccion ? ': ' + esc(c.direccion) : ''}
+      ${c.notas ? `<br>📝 ${esc(c.notas)}` : ''}</div>
+    ${c.estado === 'cancelada' ? '' : `<div class="acciones">
+      ${c.estado === 'pendiente' ? `<button class="btn ok peq" data-acc="confirmar" data-id="${c.id}">Confirmar</button>` : ''}
+      <a class="btn sec peq" href="tel:${esc(c.telefono)}">📞 Llamar</a>
+      <a class="btn sec peq" target="_blank" href="https://wa.me/${tel}?text=${msg}">WhatsApp</a>
+      ${mapa}
+      <button class="btn mal peq" data-acc="cancelar" data-id="${c.id}">Cancelar</button>
+    </div>`}
+  </div>`;
+}
+
+document.addEventListener('click', async e => {
+  const b = e.target.closest('button[data-acc]'); if (!b) return;
+  const id = b.dataset.id;
+  if (b.dataset.acc === 'confirmar') await updateDoc(doc(db, 'citas', id), { estado: 'confirmada' });
+  if (b.dataset.acc === 'cancelar') {
+    if (!confirm('¿Cancelar esta cita? El hueco volverá a quedar libre.')) return;
+    const batch = writeBatch(db);
+    batch.update(doc(db, 'citas', id), { estado: 'cancelada' });
+    batch.delete(doc(db, 'ocupado', id));
+    await batch.commit();
+  }
+});
+
+function escucharPendientes() {
+  if (unsubPend) unsubPend();
+  unsubPend = onSnapshot(query(collection(db, 'citas'), where('estado', '==', 'pendiente')), snap => {
+    const l = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => c.fecha >= hoy())
+      .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.ini - b.ini);
+    $('pendientesBox').classList.toggle('hidden', !l.length);
+    $('pendientes').innerHTML = l.map(c => tarjetaCita(c, true)).join('');
+    $('badge').textContent = l.length; $('badge').classList.toggle('hidden', !l.length);
+    document.title = (l.length ? `(${l.length}) ` : '') + 'Mi agenda';
+  });
+}
+
+async function verDia(f) {
+  diaActual = f; $('diaSel').value = f;
+  $('diaTitulo').textContent = fechaLarga(f) + (f === hoy() ? ' (hoy)' : '');
+  const bl = await getDocs(query(collection(db, 'bloqueos'), where('fecha', '==', f)));
+  $('bloqDia').innerHTML = bl.docs.map(d => { const b = d.data();
+    return `<div class="bloq">🚫 Bloqueado ${b.todoDia ? 'todo el día' : toHM(b.ini) + '–' + toHM(b.fin)}</div>`; }).join('');
+  if (unsubDia) unsubDia();
+  unsubDia = onSnapshot(query(collection(db, 'citas'), where('fecha', '==', f)), snap => {
+    const l = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.ini - b.ini);
+    $('citasDia').innerHTML = l.length ? l.map(c => tarjetaCita(c)).join('') : '<p class="aviso">No hay citas este día.</p>';
+  });
+}
+$('diaSel').onchange = () => verDia($('diaSel').value);
+$('diaAnt').onclick = () => verDia(sumaDias(diaActual, -1));
+$('diaSig').onclick = () => verDia(sumaDias(diaActual, 1));
+
+// ---------- NUEVA CITA ----------
+let nHoraSel = null;
+async function cargarHuecosNueva() {
+  nHoraSel = null; $('nSolape').classList.add('hidden');
+  const s = servicios.find(x => x.id === $('nServ').value), f = $('nFecha').value;
+  if (!s || !f) return;
+  const [oc, bl] = await Promise.all([
+    getDocs(query(collection(db, 'ocupado'), where('fecha', '==', f))),
+    getDocs(query(collection(db, 'bloqueos'), where('fecha', '==', f)))]);
+  const l = huecos(cfg, f, Number(s.duracion), oc.docs.map(d => d.data()), bl.docs.map(d => d.data()));
+  $('nHuecos').innerHTML = l.length ? l.map(t => `<button class="chip" data-t="${t}">${toHM(t)}</button>`).join('')
+                                    : '<p class="aviso">Sin huecos en tu horario. Puedes poner otra hora abajo.</p>';
+  $('nHuecos').querySelectorAll('button').forEach(b => b.onclick = () => {
+    nHoraSel = Number(b.dataset.t); $('nHora').value = toHM(nHoraSel);
+    $('nHuecos').querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b));
+    $('nSolape').classList.add('hidden');
+  });
+}
+$('nServ').onchange = cargarHuecosNueva;
+$('nFecha').onchange = cargarHuecosNueva;
+$('nHora').onchange = async () => {
+  $('nHuecos').querySelectorAll('button').forEach(x => x.classList.remove('sel'));
+  const s = servicios.find(x => x.id === $('nServ').value); if (!s || !$('nHora').value) return;
+  const ini = toMin($('nHora').value), fin = ini + Number(s.duracion);
+  const oc = await getDocs(query(collection(db, 'ocupado'), where('fecha', '==', $('nFecha').value)));
+  const choca = oc.docs.some(d => { const o = d.data(); return ini < o.fin && fin > o.ini; });
+  $('nSolape').textContent = '⚠️ Esa hora se solapa con otra cita. Puedes guardarla igualmente.';
+  $('nSolape').classList.toggle('hidden', !choca);
+};
+$('nGuardar').onclick = async () => {
+  const s = servicios.find(x => x.id === $('nServ').value), f = $('nFecha').value, h = $('nHora').value;
+  const msg = $('nMsg');
+  if (!s || !f || !h || !$('nNombre').value.trim()) {
+    msg.className = 'alerta'; msg.textContent = 'Falta el masaje, el día, la hora o el nombre.'; return;
+  }
+  const ini = toMin(h), dur = Number(s.duracion);
+  const ref = doc(collection(db, 'citas')), batch = writeBatch(db);
+  batch.set(ref, { servicioId: s.id, servicio: s.nombre, duracion: dur, precio: s.precio || '',
+    fecha: f, ini, fin: ini + dur, nombre: $('nNombre').value.trim(), telefono: $('nTel').value.trim(),
+    lugar: $('nLugar').value, direccion: $('nDir').value.trim(), notas: $('nNotas').value.trim(),
+    estado: 'confirmada', origen: 'manual', creado: serverTimestamp() });
+  batch.set(doc(db, 'ocupado', ref.id), { fecha: f, ini, fin: ini + dur });
+  await batch.commit();
+  ['nNombre', 'nTel', 'nDir', 'nNotas', 'nHora'].forEach(id => $(id).value = '');
+  msg.className = 'exito'; msg.textContent = `Cita guardada: ${fechaLarga(f)} a las ${h} ✓`;
+  cargarHuecosNueva();
+};
+
+// ---------- BLOQUEOS ----------
+$('bTodo').onchange = () => $('bHoras').classList.toggle('hidden', $('bTodo').checked);
+$('bGuardar').onclick = async () => {
+  const desde = $('bDesde').value, hasta = $('bHasta').value || desde;
+  if (!desde || hasta < desde) { $('bMsg').innerHTML = '<p class="alerta">Revisa las fechas.</p>'; return; }
+  const todoDia = $('bTodo').checked;
+  const ini = todoDia ? 0 : toMin($('bIni').value), fin = todoDia ? 1440 : toMin($('bFin').value);
+  if (fin <= ini) { $('bMsg').innerHTML = '<p class="alerta">La hora final debe ser posterior.</p>'; return; }
+  const batch = writeBatch(db), afectadas = [];
+  for (let f = desde, i = 0; f <= hasta && i < 120; f = sumaDias(f, 1), i++) {
+    batch.set(doc(collection(db, 'bloqueos')), { fecha: f, todoDia, ini, fin });
+    const cs = await getDocs(query(collection(db, 'citas'), where('fecha', '==', f)));
+    cs.docs.forEach(d => { const c = { id: d.id, ...d.data() };
+      if (c.estado !== 'cancelada' && c.ini < fin && c.fin > ini) afectadas.push(c); });
+  }
+  await batch.commit();
+  $('bMsg').innerHTML = afectadas.length
+    ? `<p class="alerta">Bloqueado ✓ — Ojo: ya tenías ${afectadas.length} cita(s) en ese hueco. No se han cancelado; avisa al cliente o muévelas:</p>` +
+      afectadas.map(c => tarjetaCita(c, true)).join('')
+    : '<p class="exito">Bloqueado ✓ Esos huecos ya no salen a los clientes.</p>';
+  listarBloqueos(); verDia(diaActual);
+};
+async function listarBloqueos() {
+  const s = await getDocs(query(collection(db, 'bloqueos'), where('fecha', '>=', hoy())));
+  const l = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.ini - b.ini);
+  $('bLista').innerHTML = l.length ? l.map(b => `<div class="bloq"><span>${fechaLarga(b.fecha)} · ${b.todoDia ? 'Todo el día' : toHM(b.ini) + '–' + toHM(b.fin)}</span>
+    <button class="btn sec peq" data-del="${b.id}">Quitar</button></div>`).join('') : '<p class="aviso">No hay bloqueos.</p>';
+  $('bLista').querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    await deleteDoc(doc(db, 'bloqueos', b.dataset.del)); listarBloqueos(); verDia(diaActual); });
+}
+
+// ---------- HORARIO ----------
+function pintarHorario() {
+  const orden = [1, 2, 3, 4, 5, 6, 0];
+  $('hDias').innerHTML = orden.map(d => { const h = cfg.horario?.[d] || { activo: false, inicio: '10:00', fin: '20:00' };
+    return `<div class="dia"><label style="display:flex;align-items:center;margin:0;color:var(--txt)">
+      <input type="checkbox" id="hA${d}" ${h.activo ? 'checked' : ''}>${DIAS_L[d]}</label>
+      <input type="time" id="hI${d}" value="${h.inicio}"><input type="time" id="hF${d}" value="${h.fin}"></div>`; }).join('');
+}
+$('hGuardar').onclick = async () => {
+  const horario = {};
+  for (let d = 0; d < 7; d++) horario[d] = { activo: $('hA' + d).checked, inicio: $('hI' + d).value || '10:00', fin: $('hF' + d).value || '20:00' };
+  cfg.horario = horario;
+  await updateDoc(doc(db, 'config', 'ajustes'), { horario });
+  flash('hMsg');
+};
+
+// ---------- MASAJES ----------
+async function cargarServicios() {
+  const s = await getDocs(collection(db, 'servicios'));
+  servicios = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+  pintarServicios();
+  $('nServ').innerHTML = servicios.filter(x => x.activo !== false)
+    .map(x => `<option value="${x.id}">${esc(x.nombre)} (${x.duracion} min)</option>`).join('');
+}
+function filaServicio(s = {}) {
+  return `<div class="serv" data-id="${s.id || ''}">
+    <input class="sN" placeholder="Ej: Relajante" value="${esc(s.nombre || '')}">
+    <input class="sD" type="number" min="10" step="5" value="${s.duracion || 60}">
+    <input class="sP" placeholder="—" value="${esc(s.precio || '')}">
+    <button class="btn mal peq sX">✕</button></div>`;
+}
+function pintarServicios() {
+  $('sLista').innerHTML = servicios.map(filaServicio).join('') || filaServicio();
+  activarBorrar();
+}
+function activarBorrar() {
+  $('sLista').querySelectorAll('.sX').forEach(b => b.onclick = () => b.closest('.serv').remove());
+}
+$('sNuevo').onclick = () => { $('sLista').insertAdjacentHTML('beforeend', filaServicio()); activarBorrar(); };
+$('sGuardar').onclick = async () => {
+  const filas = [...$('sLista').querySelectorAll('.serv')];
+  const batch = writeBatch(db), vivos = new Set();
+  filas.forEach((f, i) => {
+    const nombre = f.querySelector('.sN').value.trim(); if (!nombre) return;
+    const ref = f.dataset.id ? doc(db, 'servicios', f.dataset.id) : doc(collection(db, 'servicios'));
+    vivos.add(ref.id);
+    batch.set(ref, { nombre, duracion: Number(f.querySelector('.sD').value) || 60,
+      precio: f.querySelector('.sP').value.trim(), activo: true, orden: i });
+  });
+  servicios.forEach(s => { if (!vivos.has(s.id)) batch.delete(doc(db, 'servicios', s.id)); });
+  await batch.commit(); await cargarServicios(); flash('sMsg');
+};
+
+// ---------- AJUSTES ----------
+function pintarAjustes() {
+  $('aNombre').value = cfg.nombre || ''; $('aMensaje').value = cfg.mensaje || '';
+  $('aPrecios').checked = cfg.mostrarPrecios !== false; $('aAuto').checked = !!cfg.autoConfirmar;
+  $('aHotel').checked = !!cfg.lugares?.hotel; $('aDom').checked = !!cfg.lugares?.domicilio; $('aCentro').checked = !!cfg.lugares?.centro;
+  $('aMargen').value = cfg.margen ?? 30; $('aIntervalo').value = String(cfg.intervalo ?? 30);
+  $('aAntel').value = cfg.antelacion ?? 120; $('aDias').value = cfg.diasVista ?? 30;
+}
+$('aGuardar').onclick = async () => {
+  const cambios = {
+    nombre: $('aNombre').value.trim() || 'Reserva tu masaje', mensaje: $('aMensaje').value.trim(),
+    mostrarPrecios: $('aPrecios').checked, autoConfirmar: $('aAuto').checked,
+    lugares: { hotel: $('aHotel').checked, domicilio: $('aDom').checked, centro: $('aCentro').checked },
+    margen: Number($('aMargen').value) || 0, intervalo: Number($('aIntervalo').value) || 30,
+    antelacion: Number($('aAntel').value) || 0, diasVista: Number($('aDias').value) || 30
+  };
+  Object.assign(cfg, cambios);
+  await updateDoc(doc(db, 'config', 'ajustes'), cambios);
+  $('hTitulo').textContent = cfg.nombre; flash('aMsg');
+};
+
+// ---------- QR ----------
+function pintarQR() {
+  if (!$('qUrl').value) $('qUrl').value = location.href.replace(/admin\.html.*$/, '');
+  $('qrImg').src = 'https://api.qrserver.com/v1/create-qr-code/?size=500x500&margin=10&data=' + encodeURIComponent($('qUrl').value);
+}
+$('qUrl').onchange = pintarQR;
+$('qCopiar').onclick = async () => { try { await navigator.clipboard.writeText($('qUrl').value); $('qCopiar').textContent = 'Copiado ✓'; } catch {} };
+</script>
+</body>
+</html>

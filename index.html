@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reserva tu masaje</title>
+<style>
+  :root { --c:#8a5a44; --c2:#f6efe9; --txt:#2b2420; --gris:#8c817a; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:#fbf8f5; color:var(--txt); }
+  header { background:var(--c); color:#fff; padding:22px 18px; text-align:center; }
+  header h1 { margin:0; font-size:1.4rem; }
+  header p { margin:6px 0 0; opacity:.9; font-size:.95rem; }
+  main { max-width:560px; margin:0 auto; padding:14px; }
+  .card { background:#fff; border-radius:14px; padding:16px; margin-bottom:14px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+  .card h2 { margin:0 0 12px; font-size:1.05rem; color:var(--c); }
+  .hidden { display:none; }
+  .opcion { display:flex; justify-content:space-between; align-items:center; width:100%; padding:14px; margin-bottom:8px;
+            border:2px solid #eee; border-radius:12px; background:#fff; font-size:1rem; text-align:left; cursor:pointer; }
+  .opcion small { color:var(--gris); display:block; margin-top:2px; }
+  .opcion.sel, .chip.sel { border-color:var(--c); background:var(--c2); }
+  .scroll-row { display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; }
+  .chip { flex:0 0 auto; min-width:66px; padding:10px 8px; border:2px solid #eee; border-radius:12px; background:#fff; text-align:center; cursor:pointer; font-size:.9rem; }
+  .chip b { display:block; font-size:1.15rem; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(78px,1fr)); gap:8px; }
+  label { display:block; font-size:.9rem; margin:10px 0 4px; color:var(--gris); }
+  input, select, textarea { width:100%; padding:12px; border:1px solid #ddd; border-radius:10px; font-size:1rem; font-family:inherit; }
+  .btn { width:100%; padding:15px; margin-top:16px; border:0; border-radius:12px; background:var(--c); color:#fff; font-size:1.05rem; font-weight:600; cursor:pointer; }
+  .btn:disabled { opacity:.6; }
+  .aviso { color:var(--gris); font-size:.95rem; }
+  .error { color:#b3261e; margin-top:10px; }
+  .resumen { background:var(--c2); border-radius:10px; padding:12px; font-size:.95rem; line-height:1.5; }
+  .ok { font-size:3rem; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="titulo">Reserva tu masaje</h1>
+  <p id="subtitulo"></p>
+</header>
+<main>
+  <section id="paso1" class="card">
+    <h2>1. Elige el masaje</h2>
+    <div id="listaServicios"><p class="aviso">Cargando…</p></div>
+  </section>
+
+  <section id="paso2" class="card hidden">
+    <h2>2. Elige el día</h2>
+    <div id="dias" class="scroll-row"></div>
+  </section>
+
+  <section id="paso3" class="card hidden">
+    <h2>3. Elige la hora</h2>
+    <div id="horas" class="grid"></div>
+  </section>
+
+  <section id="paso4" class="card hidden">
+    <h2>4. Tus datos</h2>
+    <div id="resumen" class="resumen"></div>
+    <form id="form">
+      <label for="nombre">Nombre</label>
+      <input id="nombre" required maxlength="80" autocomplete="name">
+      <label for="telefono">Teléfono</label>
+      <input id="telefono" type="tel" required maxlength="25" autocomplete="tel">
+      <label for="lugar">¿Dónde?</label>
+      <select id="lugar"></select>
+      <div id="bloqueDireccion">
+        <label for="direccion" id="lblDireccion">Dirección</label>
+        <input id="direccion" maxlength="200">
+      </div>
+      <label for="notas">Comentarios (opcional)</label>
+      <textarea id="notas" rows="2" maxlength="300"></textarea>
+      <button class="btn" id="btnEnviar" type="submit">Solicitar reserva</button>
+      <p id="error" class="error"></p>
+    </form>
+  </section>
+
+  <section id="hecho" class="card hidden"></section>
+</main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, getDoc, collection, getDocs, query, where, writeBatch, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { firebaseConfig } from "./firebase-config.js";
+
+const db = getFirestore(initializeApp(firebaseConfig));
+const $ = id => document.getElementById(id);
+
+// ---------- utilidades de horas ----------
+const toMin = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
+const toHM = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const fechaLarga = f => new Date(f + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+const LUGARES = { hotel: 'En mi hotel', domicilio: 'En mi domicilio', centro: 'En el centro' };
+
+// Calcula los huecos libres de un día para un masaje de "dur" minutos
+function huecos(cfg, fecha, dur, ocupados, bloqueos) {
+  const dow = new Date(fecha + 'T12:00:00').getDay();
+  const h = cfg.horario?.[dow];
+  if (!h || !h.activo) return [];
+  const ini = toMin(h.inicio), fin = toMin(h.fin);
+  const paso = Number(cfg.intervalo) || 30, margen = Number(cfg.margen) || 0;
+  const busy = [
+    ...ocupados.map(o => [o.ini - margen, o.fin + margen]),
+    ...bloqueos.map(b => b.todoDia ? [0, 1440] : [b.ini, b.fin])
+  ];
+  let minimo = -1;
+  if (fecha === ymd(new Date())) {
+    const n = new Date();
+    minimo = n.getHours() * 60 + n.getMinutes() + (Number(cfg.antelacion) || 0);
+  }
+  const r = [];
+  for (let t = ini; t + dur <= fin; t += paso) {
+    if (t < minimo) continue;
+    if (busy.some(([a, b]) => t < b && t + dur > a)) continue;
+    r.push(t);
+  }
+  return r;
+}
+
+async function cargarDia(fecha) {
+  const [oc, bl] = await Promise.all([
+    getDocs(query(collection(db, 'ocupado'), where('fecha', '==', fecha))),
+    getDocs(query(collection(db, 'bloqueos'), where('fecha', '==', fecha)))
+  ]);
+  return { ocupados: oc.docs.map(d => d.data()), bloqueos: bl.docs.map(d => d.data()) };
+}
+
+// ---------- estado ----------
+let cfg = null, servicios = [], sel = { servicio: null, fecha: null, hora: null };
+
+async function init() {
+  const c = await getDoc(doc(db, 'config', 'ajustes'));
+  if (!c.exists()) { $('listaServicios').innerHTML = '<p class="aviso">Las reservas aún no están abiertas.</p>'; return; }
+  cfg = c.data();
+  $('titulo').textContent = cfg.nombre || 'Reserva tu masaje';
+  document.title = cfg.nombre || 'Reserva tu masaje';
+  $('subtitulo').textContent = cfg.mensaje || '';
+
+  const s = await getDocs(collection(db, 'servicios'));
+  servicios = s.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.activo !== false)
+    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.duracion - b.duracion);
+  pintarServicios();
+
+  const lug = Object.entries(LUGARES).filter(([k]) => cfg.lugares?.[k]);
+  $('lugar').innerHTML = lug.map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+  $('lugar').onchange = ajustarDireccion;
+  ajustarDireccion();
+}
+
+function ajustarDireccion() {
+  const v = $('lugar').value;
+  $('bloqueDireccion').classList.toggle('hidden', v === 'centro');
+  $('lblDireccion').textContent = v === 'hotel' ? 'Hotel y nº de habitación' : 'Dirección completa';
+  $('direccion').required = v !== 'centro';
+}
+
+function pintarServicios() {
+  if (!servicios.length) { $('listaServicios').innerHTML = '<p class="aviso">Aún no hay masajes disponibles.</p>'; return; }
+  $('listaServicios').innerHTML = servicios.map(s => `
+    <button class="opcion ${sel.servicio?.id === s.id ? 'sel' : ''}" data-id="${s.id}">
+      <span>${esc(s.nombre)}<small>${s.duracion} min</small></span>
+      ${cfg.mostrarPrecios !== false && s.precio ? `<b>${esc(s.precio)} €</b>` : ''}
+    </button>`).join('');
+  $('listaServicios').querySelectorAll('button').forEach(b => b.onclick = () => {
+    sel.servicio = servicios.find(s => s.id === b.dataset.id);
+    sel.fecha = sel.hora = null;
+    pintarServicios(); pintarDias();
+    ['paso3', 'paso4'].forEach(p => $(p).classList.add('hidden'));
+    $('paso2').classList.remove('hidden');
+    $('paso2').scrollIntoView({ behavior: 'smooth' });
+  });
+}
+
+function pintarDias() {
+  const n = Number(cfg.diasVista) || 30, hoy = new Date(), html = [];
+  for (let i = 0; i < n; i++) {
+    const d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + i);
+    if (!cfg.horario?.[d.getDay()]?.activo) continue;
+    const f = ymd(d);
+    html.push(`<button class="chip ${sel.fecha === f ? 'sel' : ''}" data-f="${f}">${i === 0 ? 'Hoy' : DIAS[d.getDay()]}<b>${d.getDate()}</b>${MESES[d.getMonth()]}</button>`);
+  }
+  $('dias').innerHTML = html.join('') || '<p class="aviso">No hay días disponibles.</p>';
+  $('dias').querySelectorAll('button').forEach(b => b.onclick = () => elegirDia(b.dataset.f));
+}
+
+async function elegirDia(f) {
+  sel.fecha = f; sel.hora = null;
+  pintarDias();
+  $('paso4').classList.add('hidden');
+  $('paso3').classList.remove('hidden');
+  $('horas').innerHTML = '<p class="aviso">Buscando huecos…</p>';
+  const { ocupados, bloqueos } = await cargarDia(f);
+  const libres = huecos(cfg, f, Number(sel.servicio.duracion), ocupados, bloqueos);
+  if (!libres.length) { $('horas').innerHTML = '<p class="aviso">No quedan huecos este día. Prueba con otro.</p>'; return; }
+  $('horas').innerHTML = libres.map(t => `<button class="chip" data-t="${t}"><b>${toHM(t)}</b></button>`).join('');
+  $('horas').querySelectorAll('button').forEach(b => b.onclick = () => {
+    sel.hora = Number(b.dataset.t);
+    $('horas').querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b));
+    $('resumen').innerHTML = `<b>${esc(sel.servicio.nombre)}</b> (${sel.servicio.duracion} min)<br>${fechaLarga(sel.fecha)} a las <b>${toHM(sel.hora)}</b>`;
+    $('paso4').classList.remove('hidden');
+    $('paso4').scrollIntoView({ behavior: 'smooth' });
+  });
+}
+
+$('form').onsubmit = async e => {
+  e.preventDefault();
+  $('error').textContent = '';
+  $('btnEnviar').disabled = true;
+  try {
+    const dur = Number(sel.servicio.duracion);
+    // Volvemos a comprobar que el hueco sigue libre
+    const { ocupados, bloqueos } = await cargarDia(sel.fecha);
+    if (!huecos(cfg, sel.fecha, dur, ocupados, bloqueos).includes(sel.hora)) {
+      $('error').textContent = 'Ese hueco se acaba de ocupar. Elige otra hora, por favor.';
+      elegirDia(sel.fecha);
+      return;
+    }
+    const estado = cfg.autoConfirmar ? 'confirmada' : 'pendiente';
+    const ref = doc(collection(db, 'citas'));
+    const batch = writeBatch(db);
+    batch.set(ref, {
+      servicioId: sel.servicio.id, servicio: sel.servicio.nombre, duracion: dur,
+      precio: sel.servicio.precio || '',
+      fecha: sel.fecha, ini: sel.hora, fin: sel.hora + dur,
+      nombre: $('nombre').value.trim(), telefono: $('telefono').value.trim(),
+      lugar: $('lugar').value, direccion: $('direccion').value.trim(), notas: $('notas').value.trim(),
+      estado, origen: 'web', creado: serverTimestamp()
+    });
+    batch.set(doc(db, 'ocupado', ref.id), { fecha: sel.fecha, ini: sel.hora, fin: sel.hora + dur });
+    await batch.commit();
+
+    ['paso1', 'paso2', 'paso3', 'paso4'].forEach(p => $(p).classList.add('hidden'));
+    $('hecho').classList.remove('hidden');
+    $('hecho').innerHTML = `
+      <div class="ok">✓</div>
+      <h2 style="text-align:center">${estado === 'confirmada' ? '¡Reserva confirmada!' : '¡Solicitud enviada!'}</h2>
+      <div class="resumen">${esc(sel.servicio.nombre)}<br>${fechaLarga(sel.fecha)} a las <b>${toHM(sel.hora)}</b></div>
+      <p class="aviso">${estado === 'confirmada' ? 'Te esperamos.' : 'Te contactaremos en breve para confirmarla.'}</p>
+      <button class="btn" onclick="location.reload()">Hacer otra reserva</button>`;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (err) {
+    console.error(err);
+    $('error').textContent = 'No se pudo enviar. Revisa la conexión e inténtalo de nuevo.';
+  } finally {
+    $('btnEnviar').disabled = false;
+  }
+};
+
+init().catch(err => { console.error(err); $('listaServicios').innerHTML = '<p class="error">No se pudo cargar. Inténtalo más tarde.</p>'; });
+</script>
+</body>
+</html>

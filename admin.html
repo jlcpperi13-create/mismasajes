@@ -57,6 +57,11 @@
   .dia { display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:6px; align-items:center; margin-bottom:6px; }
   .serv { display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:6px; align-items:center; margin-bottom:8px; }
   #login { max-width:380px; margin:40px auto; }
+  .totales { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
+  .total { background:#fff; border-radius:12px; padding:10px 12px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+  .total small { display:block; color:var(--gris); font-size:.78rem; }
+  .total b { font-size:1.35rem; color:var(--c); }
+  .total .extra { font-size:.78rem; color:var(--pend); margin-top:2px; }
   #qrImg { display:block; margin:12px auto; max-width:260px; width:100%; }
 </style>
 </head>
@@ -98,6 +103,7 @@
         <button class="btn sec" id="diaSig">▶</button>
       </div>
       <p id="diaTitulo" style="font-weight:600;margin:0 0 8px"></p>
+      <div id="totales" class="totales"></div>
       <div id="bloqDia"></div>
       <div id="citasDia"></div>
     </section>
@@ -367,7 +373,9 @@ function tarjetaCita(c, conFecha = false) {
       ${c.recordatorioEmail ? '<br>📩 Recordatorio enviado por correo' : ''}
       ${c.recordatorioSMS ? '<br>📩 Recordatorio enviado por SMS' : ''}
       ${c.recordatorioError ? `<br><span style="color:var(--mal)">⚠️ Recordatorio no enviado: ${esc(c.recordatorioError)}</span>` : ''}</div>
-    ${c.estado === 'cancelada' ? '' : `<div class="acciones">
+    ${c.estado === 'cancelada' ? `<div class="acciones">
+      <button class="btn mal peq" data-acc="eliminar" data-id="${c.id}">🗑 Eliminar</button>
+    </div>` : `<div class="acciones">
       ${c.estado === 'pendiente' ? `<button class="btn ok peq" data-acc="confirmar" data-id="${c.id}">Confirmar</button>` : ''}
       <a class="btn sec peq" href="tel:${esc(c.telefono)}">📞 Llamar</a>
       <a class="btn sec peq" target="_blank" href="https://wa.me/${tel}?text=${msg}">WhatsApp</a>
@@ -388,7 +396,48 @@ document.addEventListener('click', async e => {
     batch.delete(doc(db, 'ocupado', id));
     await batch.commit();
   }
+  if (b.dataset.acc === 'eliminar') {
+    if (!confirm('¿Eliminar definitivamente esta cita cancelada? No se puede deshacer.')) return;
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'citas', id));
+    batch.delete(doc(db, 'ocupado', id));
+    await batch.commit();
+  }
+  if (b.dataset.acc === 'eliminarCanceladas') {
+    const ids = b.dataset.ids.split(',').filter(Boolean);
+    if (!ids.length || !confirm(`¿Eliminar las ${ids.length} citas canceladas de este día? No se puede deshacer.`)) return;
+    const batch = writeBatch(db);
+    ids.forEach(x => { batch.delete(doc(db, 'citas', x)); batch.delete(doc(db, 'ocupado', x)); });
+    await batch.commit();
+  }
 });
+
+// ---------- IMPORTES ----------
+// El precio se guarda como texto ("50", "45,50", "40 €"): lo convertimos a número
+const importe = c => { const n = parseFloat(String(c.precio ?? '').replace(',', '.').replace(/[^\d.]/g, '')); return isNaN(n) ? 0 : n; };
+const eur = n => n.toLocaleString('es-ES', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }) + ' €';
+function sumar(l) {
+  const conf = l.filter(c => c.estado === 'confirmada'), pend = l.filter(c => c.estado === 'pendiente');
+  return { total: conf.reduce((s, c) => s + importe(c), 0), n: conf.length,
+           pend: pend.reduce((s, c) => s + importe(c), 0), nPend: pend.length };
+}
+let totDia = null, totMes = null, mesActual = null, unsubMes = null;
+function pintarTotales() {
+  const nombreMes = new Date(diaActual + 'T12:00:00').toLocaleDateString('es-ES', { month: 'long' });
+  const caja = (titulo, t) => !t ? '' : `<div class="total"><small>${titulo}</small><b>${eur(t.total)}</b>
+    <small>${t.n} cita${t.n === 1 ? '' : 's'} confirmada${t.n === 1 ? '' : 's'}</small>
+    ${t.nPend ? `<div class="extra">+ ${eur(t.pend)} pendiente${t.nPend === 1 ? '' : 's'} (${t.nPend})</div>` : ''}</div>`;
+  $('totales').innerHTML = caja('Este día', totDia) + caja('Mes de ' + nombreMes, totMes);
+}
+function escucharMes(f) {
+  const mes = f.slice(0, 7);
+  if (mes === mesActual) return;
+  mesActual = mes;
+  if (unsubMes) unsubMes();
+  unsubMes = onSnapshot(query(collection(db, 'citas'), where('fecha', '>=', mes + '-01'), where('fecha', '<=', mes + '-31')), snap => {
+    totMes = sumar(snap.docs.map(d => d.data())); pintarTotales();
+  });
+}
 
 function escucharPendientes() {
   if (unsubPend) unsubPend();
@@ -411,8 +460,12 @@ async function verDia(f) {
   if (unsubDia) unsubDia();
   unsubDia = onSnapshot(query(collection(db, 'citas'), where('fecha', '==', f)), snap => {
     const l = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.ini - b.ini);
-    $('citasDia').innerHTML = l.length ? l.map(c => tarjetaCita(c)).join('') : '<p class="aviso">No hay citas este día.</p>';
+    const canceladas = l.filter(c => c.estado === 'cancelada').map(c => c.id);
+    $('citasDia').innerHTML = (l.length ? l.map(c => tarjetaCita(c)).join('') : '<p class="aviso">No hay citas este día.</p>')
+      + (canceladas.length > 1 ? `<button class="btn sec full" data-acc="eliminarCanceladas" data-ids="${canceladas.join(',')}">🗑 Eliminar las ${canceladas.length} canceladas de este día</button>` : '');
+    totDia = sumar(l); pintarTotales();
   });
+  escucharMes(f);
 }
 $('diaSel').onchange = () => verDia($('diaSel').value);
 $('diaAnt').onclick = () => verDia(sumaDias(diaActual, -1));

@@ -4,7 +4,7 @@
   "short_name": "Mi agenda",
   "description": "Agenda y reservas de masajes",
   "start_url": "./admin.html",
-  "scope": "./",
+  "scope": "./admin.html",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#fbf8f5",

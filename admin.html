@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Mi agenda</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#8a5a44">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Mi agenda">
 <style>
   :root { --c:#8a5a44; --c2:#f6efe9; --txt:#2b2420; --gris:#8c817a; --ok:#2e7d32; --pend:#d98e04; --mal:#b3261e; }
   * { box-sizing:border-box; }
@@ -67,7 +73,8 @@
 </div>
 
 <div id="app" class="hidden">
-  <header><h1 id="hTitulo">Mi agenda</h1><button id="btnSalir">Salir</button></header>
+  <header><h1 id="hTitulo">Mi agenda</h1>
+    <span><button id="btnInstalar" class="hidden">📲 Instalar</button> <button id="btnSalir">Salir</button></span></header>
   <nav id="tabs">
     <button data-t="agenda" class="act">Agenda<span id="badge" class="badge hidden"></span></button>
     <button data-t="nueva">+ Cita</button>
@@ -106,6 +113,7 @@
         <p id="nSolape" class="alerta hidden"></p>
         <label>Nombre</label><input id="nNombre">
         <label>Teléfono</label><input id="nTel" type="tel">
+        <label>Correo (opcional, para el recordatorio)</label><input id="nEmail" type="email">
         <label>Lugar</label>
         <select id="nLugar"><option value="hotel">Hotel</option><option value="domicilio">Domicilio</option><option value="centro">Centro</option></select>
         <label>Dirección / hotel y habitación</label><input id="nDir">
@@ -177,6 +185,12 @@
           <div><label>Antelación mínima (min)</label><input type="number" id="aAntel" min="0" step="15"></div>
           <div><label>Días visibles</label><input type="number" id="aDias" min="1" max="120"></div>
         </div>
+        <h2 style="margin-top:20px">Recordatorios del día antes</h2>
+        <p class="aviso">Solo a las citas confirmadas.</p>
+        <label style="display:flex;align-items:center"><input type="checkbox" id="aEmail">Por correo (gratis) — pide el correo al reservar</label>
+        <label style="display:flex;align-items:center"><input type="checkbox" id="aSms">Por SMS (de pago, necesita Instasent)</label>
+        <label>Teléfono de contacto (sale en el recordatorio)</label><input id="aTelContacto" type="tel" placeholder="600 000 000">
+
         <h2 style="margin-top:20px">Protección de datos</h2>
         <p class="aviso">Aparece en el texto de privacidad que aceptan los clientes al reservar.</p>
         <label>Responsable (nombre y apellidos o empresa)</label><input id="aResp">
@@ -280,6 +294,19 @@ function huecos(cfg, fecha, dur, ocupados, bloqueos) {
 
 let cfg = null, servicios = [], diaActual = hoy(), unsubDia = null, unsubPend = null;
 
+// ---------- app instalable ----------
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(console.error);
+let promptInstalar = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault(); promptInstalar = e; $('btnInstalar').classList.remove('hidden');
+});
+$('btnInstalar').onclick = async () => {
+  if (!promptInstalar) return;
+  promptInstalar.prompt(); await promptInstalar.userChoice;
+  promptInstalar = null; $('btnInstalar').classList.add('hidden');
+};
+window.addEventListener('appinstalled', () => $('btnInstalar').classList.add('hidden'));
+
 // ---------- login ----------
 onAuthStateChanged(auth, async user => {
   if (user && user.email === ADMIN_EMAIL) {
@@ -329,9 +356,12 @@ function tarjetaCita(c, conFecha = false) {
       <span style="flex:0"><span class="estado ${c.estado}">${c.estado}</span></span>
     </div>
     <div><b>${esc(c.servicio)}</b>${c.precio ? ` · ${esc(c.precio)} €` : ''}</div>
-    <div class="meta">👤 ${esc(c.nombre)} · ${esc(c.telefono)}<br>
+    <div class="meta">👤 ${esc(c.nombre)} · ${esc(c.telefono)}${c.email ? `<br>✉️ ${esc(c.email)}` : ''}<br>
       📍 ${LUGAR_TXT[c.lugar] || ''}${c.direccion ? ': ' + esc(c.direccion) : ''}
-      ${c.notas ? `<br>📝 ${esc(c.notas)}` : ''}</div>
+      ${c.notas ? `<br>📝 ${esc(c.notas)}` : ''}
+      ${c.recordatorioEmail ? '<br>📩 Recordatorio enviado por correo' : ''}
+      ${c.recordatorioSMS ? '<br>📩 Recordatorio enviado por SMS' : ''}
+      ${c.recordatorioError ? `<br><span style="color:var(--mal)">⚠️ Recordatorio no enviado: ${esc(c.recordatorioError)}</span>` : ''}</div>
     ${c.estado === 'cancelada' ? '' : `<div class="acciones">
       ${c.estado === 'pendiente' ? `<button class="btn ok peq" data-acc="confirmar" data-id="${c.id}">Confirmar</button>` : ''}
       <a class="btn sec peq" href="tel:${esc(c.telefono)}">📞 Llamar</a>
@@ -421,12 +451,12 @@ $('nGuardar').onclick = async () => {
   const ini = toMin(h), dur = Number(s.duracion);
   const ref = doc(collection(db, 'citas')), batch = writeBatch(db);
   batch.set(ref, { servicioId: s.id, servicio: s.nombre, duracion: dur, precio: s.precio || '',
-    fecha: f, ini, fin: ini + dur, nombre: $('nNombre').value.trim(), telefono: $('nTel').value.trim(),
+    fecha: f, ini, fin: ini + dur, nombre: $('nNombre').value.trim(), telefono: $('nTel').value.trim(), email: $('nEmail').value.trim(),
     lugar: $('nLugar').value, direccion: $('nDir').value.trim(), notas: $('nNotas').value.trim(),
     estado: 'confirmada', origen: 'manual', creado: serverTimestamp() });
   batch.set(doc(db, 'ocupado', ref.id), { fecha: f, ini, fin: ini + dur });
   await batch.commit();
-  ['nNombre', 'nTel', 'nDir', 'nNotas', 'nHora'].forEach(id => $(id).value = '');
+  ['nNombre', 'nTel', 'nEmail', 'nDir', 'nNotas', 'nHora'].forEach(id => $(id).value = '');
   msg.className = 'exito'; msg.textContent = `Cita guardada: ${fechaLarga(f)} a las ${h} ✓`;
   cargarHuecosNueva();
 };
@@ -524,6 +554,7 @@ function pintarAjustes() {
   $('aAntel').value = cfg.antelacion ?? 120; $('aDias').value = cfg.diasVista ?? 30;
   $('aResp').value = cfg.responsable || ''; $('aNif').value = cfg.nif || '';
   $('aEmailPriv').value = cfg.emailPriv || ''; $('aDirPriv').value = cfg.direccionPriv || '';
+  $('aSms').checked = !!cfg.recordatoriosSMS; $('aEmail').checked = !!cfg.recordatoriosEmail; $('aTelContacto').value = cfg.telefonoContacto || '';
 }
 $('aGuardar').onclick = async () => {
   const cambios = {
@@ -533,7 +564,8 @@ $('aGuardar').onclick = async () => {
     margen: Number($('aMargen').value) || 0, intervalo: Number($('aIntervalo').value) || 30,
     antelacion: Number($('aAntel').value) || 0, diasVista: Number($('aDias').value) || 30,
     responsable: $('aResp').value.trim(), nif: $('aNif').value.trim(),
-    emailPriv: $('aEmailPriv').value.trim(), direccionPriv: $('aDirPriv').value.trim()
+    emailPriv: $('aEmailPriv').value.trim(), direccionPriv: $('aDirPriv').value.trim(),
+    recordatoriosSMS: $('aSms').checked, recordatoriosEmail: $('aEmail').checked, telefonoContacto: $('aTelContacto').value.trim()
   };
   Object.assign(cfg, cambios);
   await updateDoc(doc(db, 'config', 'ajustes'), cambios);
@@ -587,9 +619,9 @@ $('cCsv').onclick = async () => {
   try {
     const s = await getDocs(collection(db, 'citas'));
     const l = s.docs.map(d => d.data()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.ini - b.ini);
-    const cab = ['Fecha', 'Hora', 'Fin', 'Masaje', 'Precio', 'Cliente', 'Teléfono', 'Lugar', 'Dirección', 'Notas', 'Estado', 'Origen'];
+    const cab = ['Fecha', 'Hora', 'Fin', 'Masaje', 'Precio', 'Cliente', 'Teléfono', 'Correo', 'Lugar', 'Dirección', 'Notas', 'Estado', 'Origen'];
     const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-    const filas = l.map(c => [c.fecha, toHM(c.ini), toHM(c.fin), c.servicio, c.precio, c.nombre, c.telefono,
+    const filas = l.map(c => [c.fecha, toHM(c.ini), toHM(c.fin), c.servicio, c.precio, c.nombre, c.telefono, c.email,
       LUGAR_TXT[c.lugar] || c.lugar, c.direccion, c.notas, c.estado, c.origen].map(q).join(';'));
     descargar(`citas-mismasajes-${hoy()}.csv`, '﻿' + [cab.map(q).join(';'), ...filas].join('\r\n'), 'text/csv;charset=utf-8');
     $('cMsg').innerHTML = `<p class="exito">Exportadas ${l.length} citas ✓</p>`;

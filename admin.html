@@ -76,6 +76,7 @@
     <button data-t="masajes">Masajes</button>
     <button data-t="ajustes">Ajustes</button>
     <button data-t="qr">QR</button>
+    <button data-t="copia">Copia</button>
   </nav>
   <main>
     <!-- AGENDA -->
@@ -176,6 +177,12 @@
           <div><label>Antelación mínima (min)</label><input type="number" id="aAntel" min="0" step="15"></div>
           <div><label>Días visibles</label><input type="number" id="aDias" min="1" max="120"></div>
         </div>
+        <h2 style="margin-top:20px">Protección de datos</h2>
+        <p class="aviso">Aparece en el texto de privacidad que aceptan los clientes al reservar.</p>
+        <label>Responsable (nombre y apellidos o empresa)</label><input id="aResp">
+        <label>NIF</label><input id="aNif">
+        <label>Correo para temas de privacidad</label><input id="aEmailPriv" type="email">
+        <label>Dirección (opcional)</label><input id="aDirPriv">
         <button class="btn full" id="aGuardar">Guardar ajustes</button>
         <p id="aMsg" class="exito hidden">Guardado ✓</p>
       </div>
@@ -189,6 +196,25 @@
         <label>Enlace de reservas</label><input id="qUrl">
         <img id="qrImg" alt="Código QR">
         <button class="btn sec full" id="qCopiar">Copiar enlace</button>
+      </div>
+    </section>
+
+    <!-- COPIA DE SEGURIDAD -->
+    <section id="t-copia" class="hidden">
+      <div class="card">
+        <h2>Copia de seguridad</h2>
+        <p class="aviso">Descarga todo (citas, masajes, horario, bloqueos y ajustes) en un archivo. Guárdalo en Drive o envíatelo por correo.</p>
+        <p id="cUltima" style="font-weight:600"></p>
+        <button class="btn full" id="cDescargar">⬇ Descargar copia completa</button>
+        <button class="btn sec full" id="cCsv">📊 Exportar citas para Excel</button>
+        <div id="cMsg"></div>
+      </div>
+      <div class="card">
+        <h2>Restaurar una copia</h2>
+        <p class="aviso">Vuelve a cargar los datos de un archivo de copia. No borra nada: añade o sobrescribe lo que haya en la copia.</p>
+        <input type="file" id="cArchivo" accept=".json,application/json">
+        <button class="btn mal full" id="cRestaurar">Restaurar copia</button>
+        <div id="cMsgR"></div>
       </div>
     </section>
   </main>
@@ -278,6 +304,7 @@ $('tabs').querySelectorAll('button').forEach(b => b.onclick = () => {
   $('t-' + b.dataset.t).classList.remove('hidden');
   if (b.dataset.t === 'bloquear') listarBloqueos();
   if (b.dataset.t === 'qr') pintarQR();
+  if (b.dataset.t === 'copia') pintarUltimaCopia();
 });
 
 async function arrancar() {
@@ -495,6 +522,8 @@ function pintarAjustes() {
   $('aHotel').checked = !!cfg.lugares?.hotel; $('aDom').checked = !!cfg.lugares?.domicilio; $('aCentro').checked = !!cfg.lugares?.centro;
   $('aMargen').value = cfg.margen ?? 30; $('aIntervalo').value = String(cfg.intervalo ?? 30);
   $('aAntel').value = cfg.antelacion ?? 120; $('aDias').value = cfg.diasVista ?? 30;
+  $('aResp').value = cfg.responsable || ''; $('aNif').value = cfg.nif || '';
+  $('aEmailPriv').value = cfg.emailPriv || ''; $('aDirPriv').value = cfg.direccionPriv || '';
 }
 $('aGuardar').onclick = async () => {
   const cambios = {
@@ -502,7 +531,9 @@ $('aGuardar').onclick = async () => {
     mostrarPrecios: $('aPrecios').checked, autoConfirmar: $('aAuto').checked,
     lugares: { hotel: $('aHotel').checked, domicilio: $('aDom').checked, centro: $('aCentro').checked },
     margen: Number($('aMargen').value) || 0, intervalo: Number($('aIntervalo').value) || 30,
-    antelacion: Number($('aAntel').value) || 0, diasVista: Number($('aDias').value) || 30
+    antelacion: Number($('aAntel').value) || 0, diasVista: Number($('aDias').value) || 30,
+    responsable: $('aResp').value.trim(), nif: $('aNif').value.trim(),
+    emailPriv: $('aEmailPriv').value.trim(), direccionPriv: $('aDirPriv').value.trim()
   };
   Object.assign(cfg, cambios);
   await updateDoc(doc(db, 'config', 'ajustes'), cambios);
@@ -516,6 +547,74 @@ function pintarQR() {
 }
 $('qUrl').onchange = pintarQR;
 $('qCopiar').onclick = async () => { try { await navigator.clipboard.writeText($('qUrl').value); $('qCopiar').textContent = 'Copiado ✓'; } catch {} };
+
+// ---------- COPIA DE SEGURIDAD ----------
+const COLECCIONES = ['config', 'servicios', 'bloqueos', 'citas', 'ocupado'];
+const limpiar = v => (v && typeof v.toDate === 'function') ? { __fecha: v.toDate().toISOString() } : v;
+const restaurarValor = v => (v && typeof v === 'object' && v.__fecha) ? new Date(v.__fecha) : v;
+
+function descargar(nombre, contenido, tipo) {
+  const url = URL.createObjectURL(new Blob([contenido], { type: tipo }));
+  const a = document.createElement('a'); a.href = url; a.download = nombre;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+function pintarUltimaCopia() {
+  let u = null; try { u = localStorage.getItem('ultimaCopia'); } catch {}
+  if (!u) { $('cUltima').textContent = 'Aún no has hecho ninguna copia en este móvil.'; return; }
+  const dias = Math.floor((Date.now() - Number(u)) / 86400000);
+  $('cUltima').textContent = 'Última copia: ' + (dias === 0 ? 'hoy' : `hace ${dias} día${dias > 1 ? 's' : ''}`);
+}
+
+$('cDescargar').onclick = async () => {
+  $('cMsg').innerHTML = '<p class="aviso">Preparando copia…</p>';
+  try {
+    const copia = { app: 'mismasajes', fecha: new Date().toISOString(), datos: {} };
+    let total = 0;
+    for (const col of COLECCIONES) {
+      const s = await getDocs(collection(db, col));
+      copia.datos[col] = {};
+      s.docs.forEach(d => { const o = {}; Object.entries(d.data()).forEach(([k, v]) => o[k] = limpiar(v)); copia.datos[col][d.id] = o; total++; });
+    }
+    descargar(`copia-mismasajes-${hoy()}.json`, JSON.stringify(copia, null, 1), 'application/json');
+    try { localStorage.setItem('ultimaCopia', String(Date.now())); } catch {}
+    pintarUltimaCopia();
+    $('cMsg').innerHTML = `<p class="exito">Copia descargada ✓ (${Object.keys(copia.datos.citas).length} citas). Está en Descargas: súbela a Drive o envíatela por correo.</p>`;
+  } catch (e) { console.error(e); $('cMsg').innerHTML = '<p class="alerta">No se pudo hacer la copia. Revisa la conexión.</p>'; }
+};
+
+$('cCsv').onclick = async () => {
+  try {
+    const s = await getDocs(collection(db, 'citas'));
+    const l = s.docs.map(d => d.data()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.ini - b.ini);
+    const cab = ['Fecha', 'Hora', 'Fin', 'Masaje', 'Precio', 'Cliente', 'Teléfono', 'Lugar', 'Dirección', 'Notas', 'Estado', 'Origen'];
+    const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const filas = l.map(c => [c.fecha, toHM(c.ini), toHM(c.fin), c.servicio, c.precio, c.nombre, c.telefono,
+      LUGAR_TXT[c.lugar] || c.lugar, c.direccion, c.notas, c.estado, c.origen].map(q).join(';'));
+    descargar(`citas-mismasajes-${hoy()}.csv`, '﻿' + [cab.map(q).join(';'), ...filas].join('\r\n'), 'text/csv;charset=utf-8');
+    $('cMsg').innerHTML = `<p class="exito">Exportadas ${l.length} citas ✓</p>`;
+  } catch (e) { console.error(e); $('cMsg').innerHTML = '<p class="alerta">No se pudo exportar.</p>'; }
+};
+
+$('cRestaurar').onclick = async () => {
+  const f = $('cArchivo').files[0];
+  if (!f) { $('cMsgR').innerHTML = '<p class="alerta">Elige primero el archivo de copia.</p>'; return; }
+  try {
+    const copia = JSON.parse(await f.text());
+    if (copia.app !== 'mismasajes' || !copia.datos) throw new Error('formato');
+    const n = Object.values(copia.datos).reduce((t, c) => t + Object.keys(c).length, 0);
+    if (!confirm(`Copia del ${new Date(copia.fecha).toLocaleString('es-ES')} con ${n} registros. ¿Restaurar?`)) return;
+    const ops = [];
+    for (const col of COLECCIONES) Object.entries(copia.datos[col] || {}).forEach(([id, o]) => {
+      const v = {}; Object.entries(o).forEach(([k, x]) => v[k] = restaurarValor(x)); ops.push([col, id, v]); });
+    for (let i = 0; i < ops.length; i += 400) {
+      const batch = writeBatch(db);
+      ops.slice(i, i + 400).forEach(([col, id, v]) => batch.set(doc(db, col, id), v));
+      await batch.commit();
+    }
+    $('cMsgR').innerHTML = `<p class="exito">Restaurados ${ops.length} registros ✓ Recarga la página.</p>`;
+  } catch (e) { console.error(e); $('cMsgR').innerHTML = '<p class="alerta">Ese archivo no es una copia válida de la agenda.</p>'; }
+};
 </script>
 </body>
 </html>

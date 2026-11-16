@@ -4,7 +4,7 @@ service cloud.firestore {
 
     // Cambia el correo por el de ella (el mismo que en firebase-config.js)
     function esAdmin() {
-      return request.auth != null && request.auth.token.email == "CORREO_DE_ELLA@gmail.com";
+      return request.auth != null && request.auth.token.email == "jlcp.peri13@gmail.com";
     }
 
     // Ajustes, masajes y bloqueos: cualquiera los lee, solo ella los cambia
@@ -29,6 +29,7 @@ service cloud.firestore {
     match /citas/{id} {
       allow read, update, delete: if esAdmin();
       allow create: if esAdmin() || (
+        request.resource.data.aceptaPrivacidad == true &&
         request.resource.data.nombre is string && request.resource.data.nombre.size() < 100 &&
         request.resource.data.telefono is string && request.resource.data.telefono.size() < 30 &&
         (request.resource.data.estado == 'pendiente' ||

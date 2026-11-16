@@ -31,6 +31,12 @@
   .error { color:#b3261e; margin-top:10px; }
   .resumen { background:var(--c2); border-radius:10px; padding:12px; font-size:.95rem; line-height:1.5; }
   .ok { font-size:3rem; text-align:center; }
+  .privacidad { margin-top:14px; }
+  .check { display:flex; gap:10px; align-items:flex-start; color:var(--txt); font-size:.92rem; margin:0; }
+  .check input { width:auto; margin-top:3px; transform:scale(1.3); flex:0 0 auto; }
+  .check a, .textoPriv a { color:var(--c); }
+  .textoPriv { background:#f4f1ee; border-radius:10px; padding:12px; margin-top:10px; font-size:.82rem; line-height:1.5; color:#5a514b; }
+  .textoPriv p { margin:0 0 6px; }
 </style>
 </head>
 <body>
@@ -69,7 +75,12 @@
         <input id="direccion" maxlength="200">
       </div>
       <label for="notas">Comentarios (opcional)</label>
-      <textarea id="notas" rows="2" maxlength="300"></textarea>
+      <textarea id="notas" rows="2" maxlength="300" placeholder="Ej: prefiero por la tarde, tengo aparcamiento…"></textarea>
+      <div class="privacidad">
+        <label class="check"><input type="checkbox" id="acepto" required>
+          <span>He leído y acepto la <a href="#" id="verPriv">política de privacidad</a></span></label>
+        <div id="textoPriv" class="textoPriv hidden"></div>
+      </div>
       <button class="btn" id="btnEnviar" type="submit">Solicitar reserva</button>
       <p id="error" class="error"></p>
     </form>
@@ -151,7 +162,25 @@ async function init() {
   $('lugar').innerHTML = lug.map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
   $('lugar').onchange = ajustarDireccion;
   ajustarDireccion();
+  pintarPrivacidad();
 }
+
+function pintarPrivacidad() {
+  const resp = esc(cfg.responsable || cfg.nombre || '');
+  const nif = cfg.nif ? ` (NIF ${esc(cfg.nif)})` : '';
+  const dir = cfg.direccionPriv ? `, ${esc(cfg.direccionPriv)}` : '';
+  const mail = esc(cfg.emailPriv || '');
+  $('textoPriv').innerHTML = `
+    <p><b>Información básica sobre protección de datos</b></p>
+    <p><b>Responsable:</b> ${resp}${nif}${dir}.${mail ? ` Contacto: <a href="mailto:${mail}">${mail}</a>` : ''}</p>
+    <p><b>Finalidad:</b> gestionar tu reserva, confirmarla y contactarte sobre ella.</p>
+    <p><b>Legitimación:</b> tu consentimiento y la prestación del servicio que solicitas.</p>
+    <p><b>Conservación:</b> mientras dure la relación y, después, durante los plazos legales obligatorios.</p>
+    <p><b>Destinatarios:</b> no se ceden datos a terceros salvo obligación legal. Los datos se alojan en Google Firebase (Google Ireland Ltd.) como encargado del tratamiento, en servidores de la UE.</p>
+    <p><b>Derechos:</b> puedes acceder, rectificar, suprimir, oponerte, limitar el tratamiento y pedir la portabilidad de tus datos${mail ? ` escribiendo a <a href="mailto:${mail}">${mail}</a>` : ' contactando con la responsable'}. También puedes reclamar ante la Agencia Española de Protección de Datos (<a href="https://www.aepd.es" target="_blank" rel="noopener">aepd.es</a>).</p>
+    <p>Por favor, no incluyas datos de salud en los comentarios; coméntalos directamente en la sesión.</p>`;
+}
+$('verPriv').onclick = e => { e.preventDefault(); $('textoPriv').classList.toggle('hidden'); };
 
 function ajustarDireccion() {
   const v = $('lugar').value;
@@ -230,7 +259,8 @@ $('form').onsubmit = async e => {
       fecha: sel.fecha, ini: sel.hora, fin: sel.hora + dur,
       nombre: $('nombre').value.trim(), telefono: $('telefono').value.trim(),
       lugar: $('lugar').value, direccion: $('direccion').value.trim(), notas: $('notas').value.trim(),
-      estado, origen: 'web', creado: serverTimestamp()
+      estado, origen: 'web', creado: serverTimestamp(),
+      aceptaPrivacidad: $('acepto').checked, fechaAceptacion: serverTimestamp()
     });
     batch.set(doc(db, 'ocupado', ref.id), { fecha: sel.fecha, ini: sel.hora, fin: sel.hora + dur });
     await batch.commit();

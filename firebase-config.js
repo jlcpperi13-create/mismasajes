@@ -10,4 +10,4 @@ export const firebaseConfig = {
 };
 
 // Correo con el que ella entrará al panel (el mismo que pongas en firestore.rules)
-export const ADMIN_EMAIL = "CORREO_DE_ELLA@gmail.com";
+export const ADMIN_EMAIL = "jlcpperi13@gmail.com";

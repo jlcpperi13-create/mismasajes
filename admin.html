@@ -212,6 +212,10 @@
           <div><label>Días visibles</label><input type="number" id="aDias" min="1" max="120"></div>
         </div>
         <label>El cliente puede modificar o cancelar hasta (horas antes)</label><input type="number" id="aLimite" min="0" max="168">
+        <h2 style="margin-top:20px">🚫 Clientes bloqueados</h2>
+        <p class="aviso">No pueden reservar online con ese teléfono o correo. Se bloquea con el botón 🚫 de sus citas.</p>
+        <div id="listaVetados"><p class="aviso">Cargando…</p></div>
+
         <h2 style="margin-top:20px">Recordatorios del día antes</h2>
         <p class="aviso">Solo a las citas confirmadas.</p>
         <label style="display:flex;align-items:center"><input type="checkbox" id="aEmail">Por correo (gratis) — pide el correo al reservar</label>
@@ -419,7 +423,7 @@ async function arrancar() {
   else cfg = c.data();
   $('hTitulo').textContent = cfg.nombre || 'Mi agenda';
   await cargarServicios();
-  pintarHorario(); pintarAjustes();
+  pintarHorario(); pintarAjustes(); pintarVetados();
   $('diaSel').value = diaActual; $('nFecha').value = hoy(); $('bDesde').value = hoy();
   escucharPendientes(); verDia(diaActual); revisarPush();
 }
@@ -458,6 +462,7 @@ function tarjetaCita(c, conFecha = false) {
       <a class="btn sec peq" target="_blank" href="https://wa.me/${tel}?text=${msg}">WhatsApp</a>
       ${mapa}
       <button class="btn mal peq" data-acc="cancelar" data-id="${c.id}">Cancelar</button>
+      ${c.origen === 'web' ? `<button class="btn sec peq" data-acc="bloquear" data-id="${c.id}">🚫 Bloquear</button>` : ''}
     </div>
     <div class="cancelBox hidden">
       <label>Motivo de la cancelación (opcional)</label>
@@ -541,6 +546,21 @@ document.addEventListener('click', async e => {
     batch.delete(doc(db, 'ocupado', id));
     await batch.commit();
   }
+  if (b.dataset.acc === 'bloquear') {
+    const snap = await getDoc(doc(db, 'citas', id)); if (!snap.exists()) return;
+    const c = snap.data();
+    if (!confirm(`¿Bloquear a ${c.nombre} (${c.telefono})?\n\nNo podrá reservar online con este teléfono${c.email ? ' ni con su correo' : ''}. Le saldrá un mensaje neutro para que llame por teléfono.`)) return;
+    const cancelar = (c.estado === 'pendiente' || c.estado === 'confirmada') && confirm('¿Cancelar también esta cita?');
+    await bloquearCliente(c);
+    if (cancelar) {
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'citas', id), { estado: 'cancelada', motivoCancelacion: '', canceladaPor: 'masajista', fechaCancelacion: serverTimestamp() });
+      batch.delete(doc(db, 'ocupado', id));
+      await batch.commit();
+    }
+    alert('Cliente bloqueado. Puedes desbloquearlo en Ajustes.');
+    pintarVetados();
+  }
   if (b.dataset.acc === 'eliminar') {
     if (!confirm('¿Eliminar definitivamente esta cita cancelada? No se puede deshacer.')) return;
     const batch = writeBatch(db);
@@ -576,6 +596,38 @@ function calcHecho(box) {
 }
 document.addEventListener('input', e => { const box = e.target.closest('.hechoBox'); if (box) calcHecho(box); });
 document.addEventListener('change', e => { const box = e.target.closest('.hechoBox'); if (box) calcHecho(box); });
+
+// ---------- CLIENTES BLOQUEADOS ----------
+// Se guarda cada forma de escribir el teléfono (612…, 34612…, 0034612…) para que no se cuele
+function variantesTel(t) {
+  const d = String(t || '').replace(/\D/g, ''); if (d.length < 6) return [];
+  const base = d.length > 9 ? d.slice(-9) : d;
+  return [...new Set([d, base, '34' + base, '0034' + base])];
+}
+async function bloquearCliente(c) {
+  const vars = variantesTel(c.telefono), grupo = vars[1] || vars[0] || ('mail-' + Date.now());
+  const info = { grupo, nombre: c.nombre || '', telefono: c.telefono || '', email: (c.email || '').trim().toLowerCase(), fecha: serverTimestamp() };
+  const batch = writeBatch(db);
+  vars.forEach(v => batch.set(doc(db, 'vetados', v), info));
+  if (info.email) batch.set(doc(db, 'vetadosEmail', info.email), info);
+  await batch.commit();
+}
+async function pintarVetados() {
+  try {
+    const [a, b] = await Promise.all([getDocs(collection(db, 'vetados')), getDocs(collection(db, 'vetadosEmail'))]);
+    const grupos = {};
+    [...a.docs, ...b.docs].forEach(d => { const x = d.data(); (grupos[x.grupo] = grupos[x.grupo] || { ...x, refs: [] }).refs.push(d.ref); });
+    const l = Object.values(grupos);
+    $('listaVetados').innerHTML = l.length ? l.map((x, i) => `<div class="bloq"><span><b>${esc(x.nombre)}</b><br><small>${esc(x.telefono)}${x.email ? ' · ' + esc(x.email) : ''}</small></span>
+      <button class="btn sec peq" data-desvetar="${i}">Desbloquear</button></div>`).join('') : '<p class="aviso">Ningún cliente bloqueado.</p>';
+    $('listaVetados').querySelectorAll('[data-desvetar]').forEach(btn => btn.onclick = async () => {
+      const x = l[Number(btn.dataset.desvetar)];
+      if (!confirm(`¿Desbloquear a ${x.nombre}? Podrá volver a reservar online.`)) return;
+      const batch = writeBatch(db); x.refs.forEach(r => batch.delete(r)); await batch.commit();
+      pintarVetados();
+    });
+  } catch (e) { console.error(e); $('listaVetados').innerHTML = '<p class="aviso">No se pudo cargar la lista (revisa las reglas).</p>'; }
+}
 
 // ---------- IMPORTES ----------
 // El precio se guarda como texto ("50", "45,50", "40 €"): lo convertimos a número

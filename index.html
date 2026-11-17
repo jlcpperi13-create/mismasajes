@@ -307,6 +307,8 @@ $('form').onsubmit = async e => {
       return;
     }
     if (editando) { await guardarCambios(dur); return; }
+    const telNorm = $('telefono').value.replace(/\D/g, '');
+    if (telNorm.length < 9) { $('error').textContent = 'Revisa el teléfono, por favor.'; return; }
     const estado = cfg.autoConfirmar ? 'confirmada' : 'pendiente';
     const ref = doc(collection(db, 'citas'));
     const batch = writeBatch(db);
@@ -314,7 +316,7 @@ $('form').onsubmit = async e => {
       servicioId: sel.servicio.id, servicio: sel.servicio.nombre, duracion: dur,
       precio: sel.servicio.precio || '',
       fecha: sel.fecha, ini: sel.hora, fin: sel.hora + dur,
-      nombre: $('nombre').value.trim(), telefono: $('telefono').value.trim(), email: $('email').value.trim(),
+      nombre: $('nombre').value.trim(), telefono: $('telefono').value.trim(), email: $('email').value.trim(), telNorm,
       lugar: $('lugar').value, direccion: $('direccion').value.trim(), notas: $('notas').value.trim(),
       estado, origen: 'web', creado: serverTimestamp(),
       aceptaPrivacidad: $('acepto').checked, fechaAceptacion: serverTimestamp()
@@ -337,7 +339,10 @@ $('form').onsubmit = async e => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (err) {
     console.error(err);
-    $('error').textContent = 'No se pudo enviar. Revisa la conexión e inténtalo de nuevo.';
+    if (err && err.code === 'permission-denied' && !editando) {
+      const t = cfg?.telefonoContacto;
+      $('error').innerHTML = 'No se ha podido completar la reserva online.' + (t ? ` Para reservar, contacta por teléfono: <a href="tel:${esc(t)}">${esc(t)}</a>.` : ' Para reservar, contacta por teléfono.');
+    } else $('error').textContent = 'No se pudo enviar. Revisa la conexión e inténtalo de nuevo.';
   } finally {
     $('btnEnviar').disabled = false;
   }

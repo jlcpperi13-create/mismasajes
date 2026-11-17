@@ -39,6 +39,9 @@
   .cita.pendiente { border-left-color:var(--pend); }
   .cita.cancelada { border-left-color:#ccc; opacity:.55; }
   .cita.realizada { border-left-color:#5b7fa6; }
+  .cancelBox { background:#fdecea; border-radius:10px; padding:10px; margin-top:10px; }
+  .cancelBox label { margin-top:0; color:var(--mal); font-weight:600; }
+  .motivo { background:#fdecea; color:var(--mal); border-radius:8px; padding:6px 10px; margin-top:6px; font-size:.9rem; }
   .cita .hora { font-size:1.2rem; font-weight:700; }
   .cita .meta { color:var(--gris); font-size:.9rem; margin:4px 0; line-height:1.45; }
   .acciones { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
@@ -383,6 +386,7 @@ async function arrancar() {
 function tarjetaCita(c, conFecha = false) {
   const tel = tel34(c.telefono);
   const msg = encodeURIComponent(`Hola ${c.nombre}, te confirmo tu cita de ${c.servicio} el ${fechaLarga(c.fecha)} a las ${toHM(c.ini)}. ¡Hasta pronto!`);
+  const msgCancel = encodeURIComponent(`Hola ${c.nombre}, lo siento mucho, pero tengo que cancelar tu cita de ${c.servicio} del ${fechaLarga(c.fecha)} a las ${toHM(c.ini)}.${c.motivoCancelacion ? ' Motivo: ' + c.motivoCancelacion + '.' : ''} Si quieres, buscamos otro día. Disculpa las molestias.`);
   const mapa = c.direccion ? `<a class="btn sec peq" target="_blank" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.direccion)}">🗺 Mapa</a>` : '';
   return `<div class="card cita ${c.estado}">
     <div class="row" style="justify-content:space-between">
@@ -396,7 +400,9 @@ function tarjetaCita(c, conFecha = false) {
       ${c.recordatorioEmail ? '<br>📩 Recordatorio enviado por correo' : ''}
       ${c.recordatorioSMS ? '<br>📩 Recordatorio enviado por SMS' : ''}
       ${c.recordatorioError ? `<br><span style="color:var(--mal)">⚠️ Recordatorio no enviado: ${esc(c.recordatorioError)}</span>` : ''}</div>
-    ${c.estado === 'cancelada' ? `<div class="acciones">
+    ${c.estado === 'cancelada' ? `${c.motivoCancelacion ? `<div class="motivo">❌ Motivo: ${esc(c.motivoCancelacion)}</div>` : ''}
+    <div class="acciones">
+      <a class="btn sec peq" target="_blank" href="https://wa.me/${tel}?text=${msgCancel}">WhatsApp: avisar</a>
       <button class="btn mal peq" data-acc="eliminar" data-id="${c.id}">🗑 Eliminar</button>
     </div>` : c.estado === 'realizada' ? `<div class="acciones">
       <button class="btn sec peq" data-acc="deshacer" data-id="${c.id}">↩ Deshacer</button>
@@ -408,6 +414,14 @@ function tarjetaCita(c, conFecha = false) {
       <a class="btn sec peq" target="_blank" href="https://wa.me/${tel}?text=${msg}">WhatsApp</a>
       ${mapa}
       <button class="btn mal peq" data-acc="cancelar" data-id="${c.id}">Cancelar</button>
+    </div>
+    <div class="cancelBox hidden">
+      <label>Motivo de la cancelación (opcional)</label>
+      <textarea class="motivoTxt" rows="2" maxlength="200" placeholder="Ej: estoy enferma, imprevisto familiar…"></textarea>
+      <div class="acciones">
+        <button class="btn mal peq" data-acc="confirmarCancelar" data-id="${c.id}">Confirmar cancelación</button>
+        <button class="btn sec peq" data-acc="volver" data-id="${c.id}">Volver</button>
+      </div>
     </div>`}
   </div>`;
 }
@@ -417,9 +431,16 @@ document.addEventListener('click', async e => {
   const id = b.dataset.id;
   if (b.dataset.acc === 'confirmar') await updateDoc(doc(db, 'citas', id), { estado: 'confirmada' });
   if (b.dataset.acc === 'cancelar') {
-    if (!confirm('¿Cancelar esta cita? El hueco volverá a quedar libre.')) return;
+    const box = b.closest('.cita').querySelector('.cancelBox');
+    box.classList.remove('hidden'); box.querySelector('textarea').focus();
+  }
+  if (b.dataset.acc === 'volver') b.closest('.cancelBox').classList.add('hidden');
+  if (b.dataset.acc === 'confirmarCancelar') {
+    const motivo = b.closest('.cancelBox').querySelector('textarea').value.trim();
+    b.disabled = true;
     const batch = writeBatch(db);
-    batch.update(doc(db, 'citas', id), { estado: 'cancelada' });
+    batch.update(doc(db, 'citas', id), { estado: 'cancelada', motivoCancelacion: motivo,
+      canceladaPor: 'masajista', fechaCancelacion: serverTimestamp() });
     batch.delete(doc(db, 'ocupado', id));
     await batch.commit();
   }

@@ -335,7 +335,8 @@ async function pintarMisCitas() {
     vivas.push(x);
     const txt = { pendiente: 'Pendiente de confirmar', confirmada: 'Confirmada', cancelada: 'Cancelada' }[estado] || estado;
     filas.push(`<div class="micita ${estado}"><span class="etq ${estado}">${txt}</span>
-      <b>${esc(dato.servicio)}</b><br>${fechaLarga(dato.fecha)} a las <b>${toHM(dato.ini)}</b></div>`);
+      <b>${esc(dato.servicio)}</b><br>${fechaLarga(dato.fecha)} a las <b>${toHM(dato.ini)}</b>
+      ${estado === 'cancelada' && dato.motivoCancelacion ? `<br><small>Motivo: ${esc(dato.motivoCancelacion)}</small>` : ''}</div>`);
   }
   guardarMias(vivas);
   if (!filas.length) return;

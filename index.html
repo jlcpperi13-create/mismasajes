@@ -45,6 +45,12 @@
   .etq.pasada { background:#eee; color:#777; }
   .quitar { background:none; border:1px solid #ccc; border-radius:16px; padding:4px 12px; color:#777; font-size:.82rem; cursor:pointer; }
   .anteriores { margin-top:10px; }
+  .accionesCita { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .accionesCita button { flex:1; padding:9px; border-radius:10px; font-size:.9rem; font-weight:600; cursor:pointer; border:0; }
+  .bMod { background:var(--c); color:#fff; } .bCan { background:#fff; color:#b3261e; border:1px solid #e6b8b4 !important; }
+  .cajaCancel { background:#fdecea; border-radius:10px; padding:10px; margin-top:8px; }
+  .cajaCancel textarea { margin-top:6px; }
+  .limite { font-size:.82rem; color:var(--gris); margin-top:6px; }
   .anteriores summary { cursor:pointer; color:var(--gris); font-size:.92rem; padding:6px 0; }
   .privacidad { margin-top:14px; }
   .check { display:flex; gap:10px; align-items:flex-start; color:var(--txt); font-size:.92rem; margin:0; }
@@ -65,6 +71,13 @@
     <h2>Tus citas</h2>
     <div id="listaMisCitas"></div>
     <p id="contactoCambio" class="aviso contacto"></p>
+  </section>
+
+  <section id="bannerEdit" class="card hidden" style="background:#fdf0d5">
+    <b>✏️ Modificando tu cita</b>
+    <p id="bannerEditTxt" class="aviso" style="margin:4px 0 10px"></p>
+    <p class="aviso" style="margin:0 0 10px">Cambia lo que necesites y pulsa <b>Guardar cambios</b> al final.</p>
+    <button type="button" class="quitar" id="salirEdit">✕ Salir sin cambiar</button>
   </section>
 
   <section id="paso1" class="card">
@@ -180,11 +193,12 @@ async function cargarDia(fecha) {
     getDocs(query(collection(db, 'ocupado'), where('fecha', '==', fecha))),
     getDocs(query(collection(db, 'bloqueos'), where('fecha', '==', fecha)))
   ]);
-  return { ocupados: oc.docs.map(d => d.data()), bloqueos: bl.docs.map(d => d.data()) };
+  return { ocupados: oc.docs.filter(d => !editando || d.id !== editando.id).map(d => d.data()), bloqueos: bl.docs.map(d => d.data()) };
 }
 
 // ---------- estado ----------
 let cfg = null, servicios = [], sel = { servicio: null, fecha: null, hora: null };
+let editando = null;   // { id, dato } cuando el cliente está modificando una cita
 
 async function init() {
   const c = await getDoc(doc(db, 'config', 'ajustes'));
@@ -292,6 +306,7 @@ $('form').onsubmit = async e => {
       elegirDia(sel.fecha);
       return;
     }
+    if (editando) { await guardarCambios(dur); return; }
     const estado = cfg.autoConfirmar ? 'confirmada' : 'pendiente';
     const ref = doc(collection(db, 'citas'));
     const batch = writeBatch(db);
@@ -328,6 +343,81 @@ $('form').onsubmit = async e => {
   }
 };
 
+// ---------- MODIFICAR / CANCELAR (cliente) ----------
+const avisar = id => { if (CFG.FUNCION_URL) fetch(CFG.FUNCION_URL + '?accion=cambio&id=' + encodeURIComponent(id), { mode: 'no-cors' }).catch(() => {}); };
+const horasHasta = d => (new Date(d.fecha + 'T' + toHM(d.ini) + ':00') - new Date()) / 3600000;
+const limiteHoras = () => { const n = Number(cfg?.limiteCambios); return isNaN(n) ? 24 : n; };
+const datosMias = {};
+
+async function empezarEdicion(id) {
+  const dato = datosMias[id]; if (!dato) return;
+  if (horasHasta(dato) < limiteHoras()) { alert(`Faltan menos de ${limiteHoras()} h para tu cita. Para cambiarla, llama o escribe por WhatsApp.`); return; }
+  editando = { id, dato };
+  $('misCitas').classList.add('hidden'); $('hecho').classList.add('hidden');
+  $('bannerEdit').classList.remove('hidden');
+  $('bannerEditTxt').innerHTML = `Tu cita actual: <b>${esc(dato.servicio)}</b>, ${fechaLarga(dato.fecha)} a las <b>${toHM(dato.ini)}</b>.`;
+  // Rellenamos el formulario con sus datos
+  $('nombre').value = dato.nombre || ''; $('telefono').value = dato.telefono || ''; $('email').value = dato.email || '';
+  if ([...$('lugar').options].some(o => o.value === dato.lugar)) $('lugar').value = dato.lugar;
+  ajustarDireccion();
+  $('direccion').value = dato.direccion || ''; $('notas').value = dato.notas || '';
+  $('acepto').checked = true;
+  $('btnEnviar').textContent = 'Guardar cambios';
+  // Masaje, día y hora actuales ya marcados
+  sel.servicio = servicios.find(x => x.id === dato.servicioId) || null;
+  sel.fecha = sel.hora = null;
+  pintarServicios();
+  ['paso2', 'paso3', 'paso4'].forEach(p => $(p).classList.add('hidden'));
+  if (sel.servicio) {
+    pintarDias(); $('paso2').classList.remove('hidden');
+    await elegirDia(dato.fecha);
+    const b = $('horas').querySelector(`[data-t="${dato.ini}"]`);
+    if (b) b.click();
+  }
+  $('bannerEdit').scrollIntoView({ behavior: 'smooth' });
+}
+$('salirEdit').onclick = () => location.reload();
+
+async function guardarCambios(dur) {
+  const { id, dato } = editando;
+  const cambioHorario = sel.fecha !== dato.fecha || sel.hora !== dato.ini || sel.servicio.id !== dato.servicioId;
+  const estado = cambioHorario && dato.estado === 'confirmada' ? 'pendiente' : dato.estado;
+  const cambios = {
+    servicioId: sel.servicio.id, servicio: sel.servicio.nombre, duracion: dur, precio: sel.servicio.precio || '',
+    fecha: sel.fecha, ini: sel.hora, fin: sel.hora + dur,
+    nombre: $('nombre').value.trim(), telefono: $('telefono').value.trim(), email: $('email').value.trim(),
+    lugar: $('lugar').value, direccion: $('direccion').value.trim(), notas: $('notas').value.trim(),
+    estado, modificadaPorCliente: true, fechaModificacion: serverTimestamp(), avisoCambio: 'pendiente'
+  };
+  if (cambioHorario) { cambios.recordatorioEmail = false; cambios.recordatorioSMS = false; }
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'citas', id), cambios);
+  batch.set(doc(db, 'ocupado', id), { fecha: sel.fecha, ini: sel.hora, fin: sel.hora + dur });
+  await batch.commit();
+  guardarMias(leerMias().map(x => x.id === id ? { ...x, fecha: sel.fecha, ini: sel.hora, servicio: sel.servicio.nombre } : x));
+  avisar(id);
+  editando = null;
+  ['bannerEdit', 'paso1', 'paso2', 'paso3', 'paso4'].forEach(p => $(p).classList.add('hidden'));
+  $('hecho').classList.remove('hidden');
+  $('hecho').innerHTML = `
+    <div class="ok">✓</div>
+    <h2 style="text-align:center">¡Cambios guardados!</h2>
+    <div class="resumen">${esc(sel.servicio.nombre)}<br>${fechaLarga(sel.fecha)} a las <b>${toHM(sel.hora)}</b></div>
+    <p class="aviso">${estado === 'pendiente' ? 'Tu cita queda <b>pendiente de confirmar</b>. Te avisaremos en breve.' : 'Tu cita sigue confirmada.'}</p>
+    <button class="btn" onclick="location.reload()">Volver a mis citas</button>`;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function cancelarMia(id, motivo) {
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'citas', id), { estado: 'cancelada', motivoCancelacion: motivo, canceladaPor: 'cliente',
+    fechaCancelacion: serverTimestamp(), avisoCambio: 'pendiente' });
+  batch.delete(doc(db, 'ocupado', id));
+  await batch.commit();
+  avisar(id);
+  pintarMisCitas();
+}
+
 async function pintarMisCitas() {
   const hoyStr = ymd(new Date());
   const mias = leerMias().sort((a, b) => a.fecha.localeCompare(b.fecha) || a.ini - b.ini);
@@ -345,15 +435,32 @@ async function pintarMisCitas() {
       : ({ pendiente: 'Pendiente de confirmar', confirmada: 'Confirmada', cancelada: 'Cancelada' }[estado] || estado);
     const clase = pasada && estado !== 'cancelada' ? 'pasada' : estado;
     const quitable = pasada || estado === 'cancelada';
+    datosMias[x.id] = { ...dato, estado };
+    const editable = !pasada && (estado === 'pendiente' || estado === 'confirmada');
+    const aTiempo = editable && horasHasta(dato) >= limiteHoras();
     const html = `<div class="micita ${clase}"><span class="etq ${clase}">${txt}</span>
       <b>${esc(dato.servicio)}</b><br>${fechaLarga(dato.fecha)} a las <b>${toHM(dato.ini)}</b>
       ${estado === 'cancelada' && dato.motivoCancelacion ? `<br><small>Motivo: ${esc(dato.motivoCancelacion)}</small>` : ''}
-      ${quitable ? `<div style="text-align:right;margin-top:6px"><button class="quitar" data-quitar="${esc(x.id)}">✕ Quitar</button></div>` : ''}</div>`;
+      ${quitable ? `<div style="text-align:right;margin-top:6px"><button class="quitar" data-quitar="${esc(x.id)}">✕ Quitar</button></div>` : ''}
+      ${aTiempo ? `<div class="accionesCita"><button class="bMod" data-mod="${esc(x.id)}">✏️ Modificar</button><button class="bCan" data-can="${esc(x.id)}">Cancelar cita</button></div>
+        <div class="cajaCancel hidden" data-caja="${esc(x.id)}"><b style="color:#b3261e">¿Cancelar esta cita?</b>
+          <textarea rows="2" maxlength="200" placeholder="Motivo (opcional)"></textarea>
+          <div class="accionesCita"><button class="bCan" data-okcan="${esc(x.id)}">Sí, cancelar</button><button class="bMod" data-nocan="${esc(x.id)}">No, mantener</button></div></div>`
+        : editable ? `<div class="limite">Faltan menos de ${limiteHoras()} h: para cambios o cancelación, llama o escribe por WhatsApp.</div>` : ''}</div>`;
     (pasada ? anteriores : proximas).push(html);
   }
   $('listaMisCitas').innerHTML =
     (proximas.length ? proximas.join('') : '<p class="aviso">No tienes citas próximas.</p>') +
     (anteriores.length ? `<details class="anteriores" ${proximas.length ? '' : 'open'}><summary>Citas anteriores (${anteriores.length})</summary>${anteriores.reverse().join('')}</details>` : '');
+  const L = $('listaMisCitas');
+  L.querySelectorAll('[data-mod]').forEach(b => b.onclick = () => empezarEdicion(b.dataset.mod));
+  L.querySelectorAll('[data-can]').forEach(b => b.onclick = () => L.querySelector(`[data-caja="${b.dataset.can}"]`).classList.remove('hidden'));
+  L.querySelectorAll('[data-nocan]').forEach(b => b.onclick = () => L.querySelector(`[data-caja="${b.dataset.nocan}"]`).classList.add('hidden'));
+  L.querySelectorAll('[data-okcan]').forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try { await cancelarMia(b.dataset.okcan, L.querySelector(`[data-caja="${b.dataset.okcan}"] textarea`).value.trim()); }
+    catch (e) { console.error(e); alert('No se pudo cancelar. Revisa la conexión.'); b.disabled = false; }
+  });
   $('listaMisCitas').querySelectorAll('[data-quitar]').forEach(b => b.onclick = () => {
     guardarMias(leerMias().filter(x => x.id !== b.dataset.quitar));
     pintarMisCitas();

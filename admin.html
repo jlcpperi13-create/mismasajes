@@ -205,6 +205,7 @@
           <div><label>Antelación mínima (min)</label><input type="number" id="aAntel" min="0" step="15"></div>
           <div><label>Días visibles</label><input type="number" id="aDias" min="1" max="120"></div>
         </div>
+        <label>El cliente puede modificar o cancelar hasta (horas antes)</label><input type="number" id="aLimite" min="0" max="168">
         <h2 style="margin-top:20px">Recordatorios del día antes</h2>
         <p class="aviso">Solo a las citas confirmadas.</p>
         <label style="display:flex;align-items:center"><input type="checkbox" id="aEmail">Por correo (gratis) — pide el correo al reservar</label>
@@ -429,10 +430,11 @@ function tarjetaCita(c, conFecha = false) {
     <div class="meta">👤 ${esc(c.nombre)} · ${esc(c.telefono)}${c.email ? `<br>✉️ ${esc(c.email)}` : ''}<br>
       📍 ${LUGAR_TXT[c.lugar] || ''}${c.direccion ? ': ' + esc(c.direccion) : ''}
       ${c.notas ? `<br>📝 ${esc(c.notas)}` : ''}
+      ${c.modificadaPorCliente && c.estado !== 'cancelada' ? '<br><b style="color:var(--pend)">✏️ Modificada por el cliente</b>' : ''}
       ${c.recordatorioEmail ? '<br>📩 Recordatorio enviado por correo' : ''}
       ${c.recordatorioSMS ? '<br>📩 Recordatorio enviado por SMS' : ''}
       ${c.recordatorioError ? `<br><span style="color:var(--mal)">⚠️ Recordatorio no enviado: ${esc(c.recordatorioError)}</span>` : ''}</div>
-    ${c.estado === 'cancelada' ? `${c.motivoCancelacion ? `<div class="motivo">❌ Motivo: ${esc(c.motivoCancelacion)}</div>` : ''}
+    ${c.estado === 'cancelada' ? `${c.canceladaPor === 'cliente' ? '<div class="motivo">❌ Cancelada por el cliente</div>' : ''}${c.motivoCancelacion ? `<div class="motivo">❌ Motivo: ${esc(c.motivoCancelacion)}</div>` : ''}
     <div class="acciones">
       <a class="btn sec peq" target="_blank" href="https://wa.me/${tel}?text=${msgCancel}">WhatsApp: avisar</a>
       <button class="btn mal peq" data-acc="eliminar" data-id="${c.id}">🗑 Eliminar</button>
@@ -766,7 +768,7 @@ function pintarAjustes() {
   $('aPrecios').checked = cfg.mostrarPrecios !== false; $('aAuto').checked = !!cfg.autoConfirmar;
   $('aHotel').checked = !!cfg.lugares?.hotel; $('aDom').checked = !!cfg.lugares?.domicilio; $('aCentro').checked = !!cfg.lugares?.centro;
   $('aMargen').value = cfg.margen ?? 30; $('aIntervalo').value = String(cfg.intervalo ?? 30);
-  $('aAntel').value = cfg.antelacion ?? 120; $('aDias').value = cfg.diasVista ?? 30;
+  $('aAntel').value = cfg.antelacion ?? 120; $('aDias').value = cfg.diasVista ?? 30; $('aLimite').value = cfg.limiteCambios ?? 24;
   $('aResp').value = cfg.responsable || ''; $('aNif').value = cfg.nif || '';
   $('aEmailPriv').value = cfg.emailPriv || ''; $('aDirPriv').value = cfg.direccionPriv || '';
   $('aSms').checked = !!cfg.recordatoriosSMS; $('aEmail').checked = !!cfg.recordatoriosEmail; $('aTelContacto').value = cfg.telefonoContacto || '';
@@ -778,6 +780,7 @@ $('aGuardar').onclick = async () => {
     lugares: { hotel: $('aHotel').checked, domicilio: $('aDom').checked, centro: $('aCentro').checked },
     margen: Number($('aMargen').value) || 0, intervalo: Number($('aIntervalo').value) || 30,
     antelacion: Number($('aAntel').value) || 0, diasVista: Number($('aDias').value) || 30,
+    limiteCambios: $('aLimite').value === '' ? 24 : Math.max(0, Number($('aLimite').value) || 0),
     responsable: $('aResp').value.trim(), nif: $('aNif').value.trim(),
     emailPriv: $('aEmailPriv').value.trim(), direccionPriv: $('aDirPriv').value.trim(),
     recordatoriosSMS: $('aSms').checked, recordatoriosEmail: $('aEmail').checked, telefonoContacto: $('aTelContacto').value.trim()

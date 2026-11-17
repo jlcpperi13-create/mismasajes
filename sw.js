@@ -22,6 +22,7 @@ self.addEventListener('push', e => {
       tag: 'cita-' + (d.id || Date.now()),
       vibrate: [200, 100, 200],
       requireInteraction: true,
+      renotify: true,
       data: { url: d.url || './admin.html' }
     }),
     (self.navigator && self.navigator.setAppBadge) ? self.navigator.setAppBadge().catch(() => {}) : null

@@ -8,3 +8,9 @@ export const firebaseConfig = {
 };
 
 export const ADMIN_EMAIL = "jlcp.peri13@gmail.com";
+
+// Avisos push: clave pública "Certificados push web" (Firebase > Configuración > Cloud Messaging)
+export const VAPID_KEY = "BBvf0kw7_x3vD-7DABiUBbd9Ki1MM7Gf5p_uSqlPwu-e_oa_6Vb9c1m8kz3RynjTQRfVe6RQ4ti3LLvoHSO1Y-c";
+
+// Dirección de la función de Google Cloud (recordatorios y avisos de cita nueva)
+export const FUNCION_URL = "https://recordatorios-295910184679.europe-southwest1.run.app/";

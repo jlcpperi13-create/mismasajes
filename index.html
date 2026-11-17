@@ -114,7 +114,8 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getFirestore, doc, getDoc, collection, getDocs, query, where, writeBatch, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { firebaseConfig } from "./firebase-config.js";
+import * as CFG from "./firebase-config.js";
+const { firebaseConfig } = CFG;
 
 const db = getFirestore(initializeApp(firebaseConfig));
 const $ = id => document.getElementById(id);
@@ -301,6 +302,8 @@ $('form').onsubmit = async e => {
     batch.set(doc(db, 'ocupado', ref.id), { fecha: sel.fecha, ini: sel.hora, fin: sel.hora + dur });
     await batch.commit();
     guardarMias([...leerMias(), { id: ref.id, fecha: sel.fecha, ini: sel.hora, servicio: sel.servicio.nombre }]);
+    // Aviso push a la masajista (no bloquea la reserva si falla)
+    if (CFG.FUNCION_URL) fetch(CFG.FUNCION_URL + '?accion=nueva&id=' + encodeURIComponent(ref.id), { mode: 'no-cors' }).catch(() => {});
 
     ['paso1', 'paso2', 'paso3', 'paso4'].forEach(p => $(p).classList.add('hidden'));
     $('hecho').classList.remove('hidden');

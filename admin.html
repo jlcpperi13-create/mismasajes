@@ -101,6 +101,12 @@
   <main>
     <!-- AGENDA -->
     <section id="t-agenda">
+      <div id="avisoPush" class="card hidden" style="background:#fdf0d5">
+        <b>🔔 Activa los avisos</b>
+        <p class="aviso" style="margin:4px 0 8px">Para que te suene el móvil cada vez que entre una cita nueva, aunque tengas la app cerrada.</p>
+        <button class="btn full" id="btnPush">Activar avisos en este móvil</button>
+        <p id="pushMsg" class="aviso" style="margin:8px 0 0"></p>
+      </div>
       <div id="pendientesBox" class="hidden">
         <h3 style="color:var(--pend);margin:4px 0 8px">Pendientes de confirmar</h3>
         <div id="pendientes"></div>
@@ -272,7 +278,9 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
 import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where,
          onSnapshot, writeBatch, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { firebaseConfig, ADMIN_EMAIL } from "./firebase-config.js";
+import { getMessaging, getToken, isSupported } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js";
+import * as CFG from "./firebase-config.js";
+const { firebaseConfig, ADMIN_EMAIL } = CFG;
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app), db = getFirestore(app);
@@ -324,6 +332,30 @@ function huecos(cfg, fecha, dur, ocupados, bloqueos) {
 }
 
 let cfg = null, servicios = [], diaActual = hoy(), unsubDia = null, unsubPend = null;
+
+// ---------- AVISOS PUSH ----------
+async function activarPush(silencioso = false) {
+  const msg = t => { if (!silencioso) $('pushMsg').textContent = t; };
+  try {
+    if (!(await isSupported()) || !('Notification' in window)) { msg('Este navegador no admite avisos. Usa Chrome con la app instalada.'); return; }
+    if (!CFG.VAPID_KEY || CFG.VAPID_KEY.startsWith('PEGA')) { msg('Falta la clave VAPID en firebase-config.js.'); return; }
+    const permiso = silencioso ? Notification.permission : await Notification.requestPermission();
+    if (permiso !== 'granted') { msg(permiso === 'denied' ? 'Los avisos están bloqueados. Actívalos en los ajustes de notificaciones de la app.' : ''); return; }
+    const reg = await navigator.serviceWorker.ready;
+    const token = await getToken(getMessaging(app), { vapidKey: CFG.VAPID_KEY, serviceWorkerRegistration: reg });
+    if (!token) { msg('No se pudo activar. Inténtalo otra vez.'); return; }
+    await setDoc(doc(db, 'tokensPush', token), { actualizado: serverTimestamp(), dispositivo: navigator.userAgent.slice(0, 150) });
+    $('avisoPush').classList.add('hidden');
+    try { localStorage.setItem('pushOK', '1'); } catch {}
+  } catch (e) { console.error(e); msg('Error al activar: ' + e.message); }
+}
+function revisarPush() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'granted') activarPush(true);          // renueva el token en silencio
+  else $('avisoPush').classList.remove('hidden');
+}
+$('btnPush').onclick = () => activarPush(false);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) try { navigator.clearAppBadge?.(); } catch {} });
 
 // ---------- app instalable ----------
 if ('serviceWorker' in navigator) {
@@ -379,7 +411,7 @@ async function arrancar() {
   await cargarServicios();
   pintarHorario(); pintarAjustes();
   $('diaSel').value = diaActual; $('nFecha').value = hoy(); $('bDesde').value = hoy();
-  escucharPendientes(); verDia(diaActual);
+  escucharPendientes(); verDia(diaActual); revisarPush();
 }
 
 // ---------- AGENDA ----------
@@ -568,6 +600,7 @@ function escucharPendientes() {
     $('pendientes').innerHTML = l.map(c => tarjetaCita(c, true)).join('');
     $('badge').textContent = l.length; $('badge').classList.toggle('hidden', !l.length);
     document.title = (l.length ? `(${l.length}) ` : '') + 'Mi agenda';
+    try { if (l.length) navigator.setAppBadge?.(l.length); else navigator.clearAppBadge?.(); } catch {}
   });
 }
 

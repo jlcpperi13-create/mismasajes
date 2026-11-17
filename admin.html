@@ -39,6 +39,12 @@
   .cita.pendiente { border-left-color:var(--pend); }
   .cita.cancelada { border-left-color:#ccc; opacity:.55; }
   .cita.realizada { border-left-color:#5b7fa6; }
+  .hechoBox { background:#e3ebf4; border-radius:10px; padding:10px; margin-top:10px; }
+  .hechoBox label { margin-top:0; color:#5b7fa6; font-weight:600; }
+  .hechoBox .row input, .hechoBox .row select, .hechoBox .supVal { padding:9px; }
+  .cobrado { font-size:1.05rem; margin:8px 0 2px; } .cobrado b { color:#5b7fa6; font-size:1.25rem; }
+  .chipD { background:#fff; border:1px solid #c9d6e6; color:#5b7fa6; border-radius:16px; padding:6px 10px; font-size:.85rem; }
+  .tachado { text-decoration:line-through; color:var(--gris); font-weight:400; }
   .cancelBox { background:#fdecea; border-radius:10px; padding:10px; margin-top:10px; }
   .cancelBox label { margin-top:0; color:var(--mal); font-weight:600; }
   .motivo { background:#fdecea; color:var(--mal); border-radius:8px; padding:6px 10px; margin-top:6px; font-size:.9rem; }
@@ -245,7 +251,10 @@
           <button class="btn sec" id="cajaSig">▶</button>
         </div>
         <div id="cajaResumen"></div>
+        <button class="btn full" id="cajaPdf">📄 Cierre del mes (PDF)</button>
         <button class="btn sec full" id="cajaCsv">📊 Exportar este mes para Excel</button>
+        <button class="btn mal full" id="cajaVaciar">🗑 Vaciar este mes (poner a cero)</button>
+        <p class="aviso" style="margin-top:6px">Borrar de la Caja no toca la agenda. Antes de vaciar, haz una copia o exporta el mes.</p>
       </div>
       <div class="card"><h2>Por tipo de masaje</h2><div id="cajaTipos"></div></div>
       <div class="card"><h2>Detalle</h2><div id="cajaLista"></div></div>
@@ -430,6 +439,7 @@ function tarjetaCita(c, conFecha = false) {
     <div class="meta">👤 ${esc(c.nombre)} · ${esc(c.telefono)}${c.email ? `<br>✉️ ${esc(c.email)}` : ''}<br>
       📍 ${LUGAR_TXT[c.lugar] || ''}${c.direccion ? ': ' + esc(c.direccion) : ''}
       ${c.notas ? `<br>📝 ${esc(c.notas)}` : ''}
+      ${c.estado === 'realizada' && c.cobrado !== undefined && c.cobrado !== importe(c) ? `<br>💶 Cobrado <b>${eur(c.cobrado)}</b> <span class="tachado">${eur(importe(c))}</span>${c.ajusteTxt ? ' (' + esc(c.ajusteTxt) + ')' : ''}` : ''}
       ${c.modificadaPorCliente && c.estado !== 'cancelada' ? '<br><b style="color:var(--pend)">✏️ Modificada por el cliente</b>' : ''}
       ${c.recordatorioEmail ? '<br>📩 Recordatorio enviado por correo' : ''}
       ${c.recordatorioSMS ? '<br>📩 Recordatorio enviado por SMS' : ''}
@@ -456,7 +466,27 @@ function tarjetaCita(c, conFecha = false) {
         <button class="btn mal peq" data-acc="confirmarCancelar" data-id="${c.id}">Confirmar cancelación</button>
         <button class="btn sec peq" data-acc="volver" data-id="${c.id}">Volver</button>
       </div>
-    </div>`}
+    </div>
+    ${c.estado === 'confirmada' ? `<div class="hechoBox hidden" data-precio="${importe(c)}">
+      <label>✓ Marcar como hecho</label>
+      <div class="fila-caja" style="border:0;padding:2px 0"><span>Precio</span><b>${eur(importe(c))}</b></div>
+      <label style="color:var(--gris);font-weight:400">Descuento (opcional)</label>
+      <div class="row"><input type="number" class="descVal" min="0" step="0.5" inputmode="decimal" placeholder="0">
+        <select class="descTipo" style="flex:0 0 70px"><option value="pct">%</option><option value="eur">€</option></select></div>
+      <div class="acciones">
+        <button class="chipD" data-acc="chipDesc" data-v="0" data-t="pct">Sin descuento</button>
+        <button class="chipD" data-acc="chipDesc" data-v="10" data-t="pct">10 %</button>
+        <button class="chipD" data-acc="chipDesc" data-v="20" data-t="pct">20 %</button>
+        <button class="chipD" data-acc="chipDesc" data-v="100" data-t="pct">Invitación</button>
+      </div>
+      <label style="color:var(--gris);font-weight:400">🚗 Suplemento por desplazamiento (€, opcional)</label>
+      <input type="number" class="supVal" min="0" step="0.5" inputmode="decimal" placeholder="0">
+      <div class="cobrado">Cobrado: <b class="cobradoTxt">${eur(importe(c))}</b></div>
+      <div class="acciones">
+        <button class="btn azul peq" data-acc="confirmarHecha" data-id="${c.id}">Confirmar ✓ Hecho</button>
+        <button class="btn sec peq" data-acc="volverHecha" data-id="${c.id}">Volver</button>
+      </div>
+    </div>` : ''}`}
   </div>`;
 }
 
@@ -478,13 +508,23 @@ document.addEventListener('click', async e => {
     batch.delete(doc(db, 'ocupado', id));
     await batch.commit();
   }
-  if (b.dataset.acc === 'hecha') {
+  if (b.dataset.acc === 'hecha') { const box = b.closest('.cita').querySelector('.hechoBox'); box.classList.remove('hidden'); calcHecho(box); }
+  if (b.dataset.acc === 'volverHecha') b.closest('.hechoBox').classList.add('hidden');
+  if (b.dataset.acc === 'chipDesc') {
+    const box = b.closest('.hechoBox');
+    box.querySelector('.descVal').value = b.dataset.v === '0' ? '' : b.dataset.v;
+    box.querySelector('.descTipo').value = b.dataset.t; calcHecho(box);
+  }
+  if (b.dataset.acc === 'confirmarHecha') {
+    const box = b.closest('.hechoBox'), d = calcHecho(box);
+    b.disabled = true;
     const snap = await getDoc(doc(db, 'citas', id)); if (!snap.exists()) return;
     const c = snap.data();
     const batch = writeBatch(db);
-    batch.update(doc(db, 'citas', id), { estado: 'realizada' });
+    batch.update(doc(db, 'citas', id), { estado: 'realizada', cobrado: d.cobrado, ajusteTxt: d.txt });
     batch.set(doc(db, 'caja', id), { fecha: c.fecha, mes: c.fecha.slice(0, 7), ini: c.ini, servicio: c.servicio || '',
-      importe: importe(c), nombre: c.nombre || '', lugar: c.lugar || '', creado: serverTimestamp() });
+      precio: d.precio, descuento: d.desc, descuentoTxt: d.descTxt, suplemento: d.sup, importe: d.cobrado, ajusteTxt: d.txt,
+      nombre: c.nombre || '', lugar: c.lugar || '', creado: serverTimestamp() });
     await batch.commit();
   }
   if (b.dataset.acc === 'deshacer') {
@@ -517,13 +557,36 @@ document.addEventListener('click', async e => {
   }
 });
 
+// ---------- DESCUENTOS Y SUPLEMENTOS ----------
+const r2 = n => Math.round(n * 100) / 100;
+const num = v => Math.max(0, Number(String(v ?? '').replace(',', '.')) || 0);
+function calcCobro(precio, val, tipo, sup) {
+  val = num(val); sup = r2(num(sup));
+  const desc = r2(Math.min(precio, tipo === 'pct' ? precio * Math.min(val, 100) / 100 : val));
+  const cobrado = r2(precio - desc + sup);
+  const descTxt = !desc ? '' : desc === precio ? 'Invitación' : tipo === 'pct' ? `-${val} %` : `-${eur(desc)}`;
+  const txt = [descTxt, sup ? `+${eur(sup)} desplazamiento` : ''].filter(Boolean).join(' · ');
+  return { precio, desc, descTxt, sup, cobrado, txt };
+}
+function calcHecho(box) {
+  const d = calcCobro(Number(box.dataset.precio) || 0, box.querySelector('.descVal').value,
+                      box.querySelector('.descTipo').value, box.querySelector('.supVal').value);
+  box.querySelector('.cobradoTxt').textContent = eur(d.cobrado) + (d.txt ? ` (${d.txt})` : '');
+  return d;
+}
+document.addEventListener('input', e => { const box = e.target.closest('.hechoBox'); if (box) calcHecho(box); });
+document.addEventListener('change', e => { const box = e.target.closest('.hechoBox'); if (box) calcHecho(box); });
+
 // ---------- IMPORTES ----------
 // El precio se guarda como texto ("50", "45,50", "40 €"): lo convertimos a número
 const importe = c => { const n = parseFloat(String(c.precio ?? '').replace(',', '.').replace(/[^\d.]/g, '')); return isNaN(n) ? 0 : n; };
 const eur = n => n.toLocaleString('es-ES', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }) + ' €';
 // Totales: lo HECHO sale de la Caja (no se pierde aunque borres citas);
 // lo confirmado y lo pendiente sale de la agenda.
-const sumaCaja = l => ({ hecho: l.reduce((s, x) => s + (Number(x.importe) || 0), 0), nHecho: l.length });
+const precioDe = x => x.precio !== undefined ? Number(x.precio) || 0 : Number(x.importe) || 0;
+const sumaCaja = l => ({ hecho: r2(l.reduce((s, x) => s + (Number(x.importe) || 0), 0)), nHecho: l.length,
+  tarifa: r2(l.reduce((s, x) => s + precioDe(x), 0)), desc: r2(l.reduce((s, x) => s + (Number(x.descuento) || 0), 0)),
+  sup: r2(l.reduce((s, x) => s + (Number(x.suplemento) || 0), 0)) });
 function sumaAgenda(l) {
   const conf = l.filter(c => c.estado === 'confirmada'), pend = l.filter(c => c.estado === 'pendiente');
   return { prev: conf.reduce((s, c) => s + importe(c), 0), nPrev: conf.length,
@@ -563,11 +626,12 @@ function verCaja(mes) {
   if (unsubCaja) unsubCaja();
   $('cajaResumen').innerHTML = '<p class="aviso">Cargando…</p>';
   unsubCaja = onSnapshot(query(collection(db, 'caja'), where('mes', '==', mes)), snap => {
-    cajaDatos = snap.docs.map(d => d.data()).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.ini - b.ini);
+    cajaDatos = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.fecha.localeCompare(b.fecha) || a.ini - b.ini);
     const t = sumaCaja(cajaDatos);
     const nombre = new Date(mes + '-15T12:00:00').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
     $('cajaResumen').innerHTML = `<div class="total" style="text-align:center"><small>Total ${nombre}</small>
-      <b style="font-size:2rem">${eur(t.hecho)}</b><small>${t.nHecho} ${pl(t.nHecho, 'masaje realizado', 'masajes realizados')}</small></div>`;
+      <b style="font-size:2rem">${eur(t.hecho)}</b><small>${t.nHecho} ${pl(t.nHecho, 'masaje realizado', 'masajes realizados')}</small>
+      ${t.desc || t.sup ? `<div class="extra" style="color:var(--gris)">Tarifa ${eur(t.tarifa)}${t.desc ? ` · descuentos −${eur(t.desc)}` : ''}${t.sup ? ` · desplazamientos +${eur(t.sup)}` : ''}</div>` : ''}</div>`;
     const tipos = {};
     cajaDatos.forEach(x => { const k = x.servicio || '—'; tipos[k] = tipos[k] || { n: 0, s: 0 }; tipos[k].n++; tipos[k].s += Number(x.importe) || 0; });
     $('cajaTipos').innerHTML = Object.keys(tipos).length
@@ -576,7 +640,11 @@ function verCaja(mes) {
       : '<p class="aviso">Sin masajes este mes.</p>';
     $('cajaLista').innerHTML = cajaDatos.length ? cajaDatos.map(x =>
       `<div class="fila-caja"><span>${new Date(x.fecha + 'T12:00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} · ${toHM(x.ini)}<br>
-        <small class="aviso">${esc(x.servicio)} · ${esc(x.nombre)}</small></span><b>${eur(Number(x.importe) || 0)}</b></div>`).join('')
+        <small class="aviso">${esc(x.servicio)} · ${esc(x.nombre)}</small></span>
+        <span style="display:flex;align-items:center;gap:6px;text-align:right">
+        <span>${Number(x.importe) !== precioDe(x) ? `<small class="tachado">${eur(precioDe(x))}</small><br>` : ''}<b>${eur(Number(x.importe) || 0)}</b>${x.ajusteTxt ? `<br><small class="aviso">${esc(x.ajusteTxt)}</small>` : ''}</span>
+        <button class="btn sec peq" data-editcaja="${x.id}" title="Cambiar lo cobrado">✏️</button>
+        <button class="btn sec peq" data-borracaja="${x.id}" title="Borrar de la Caja">🗑</button></span></div>`).join('')
       : '<p class="aviso">Cuando marques un masaje como ✓ Hecho aparecerá aquí.</p>';
   });
 }
@@ -584,13 +652,154 @@ const sumaMes = (m, n) => { const [y, mm] = m.split('-').map(Number); const d = 
 $('cajaMes').onchange = () => $('cajaMes').value && verCaja($('cajaMes').value);
 $('cajaAnt').onclick = () => verCaja(sumaMes($('cajaMes').value || hoy().slice(0, 7), -1));
 $('cajaSig').onclick = () => verCaja(sumaMes($('cajaMes').value || hoy().slice(0, 7), 1));
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-borracaja]'); if (!b) return;
+  const x = cajaDatos.find(y => y.id === b.dataset.borracaja); if (!x) return;
+  if (!confirm(`¿Borrar de la Caja "${x.servicio}" de ${x.nombre} (${eur(Number(x.importe) || 0)})?`)) return;
+  await deleteDoc(doc(db, 'caja', x.id));
+});
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-editcaja]'); if (!b) return;
+  const x = cajaDatos.find(y => y.id === b.dataset.editcaja); if (!x) return;
+  const precio = precioDe(x);
+  const resp = prompt(`${x.servicio} · ${x.nombre}\nPrecio: ${eur(precio)}\n\n¿Cuánto se cobró en total? (€)\nMenos que el precio = descuento · más = suplemento`, String(Number(x.importe) || 0).replace('.', ','));
+  if (resp === null) return;
+  if (!/\d/.test(resp)) { alert('Escribe una cantidad, por ejemplo 45 o 62,50'); return; }
+  const n = num(resp.replace(/[^\d.,]/g, ''));
+  const d = n <= precio ? calcCobro(precio, precio - n, 'eur', 0) : calcCobro(precio, 0, 'eur', n - precio);
+  await updateDoc(doc(db, 'caja', x.id), { precio, descuento: d.desc, descuentoTxt: d.descTxt, suplemento: d.sup, importe: d.cobrado, ajusteTxt: d.txt });
+  try { await updateDoc(doc(db, 'citas', x.id), { cobrado: d.cobrado, ajusteTxt: d.txt }); } catch {}
+});
+$('cajaVaciar').onclick = async () => {
+  if (!cajaDatos.length) return;
+  const total = eur(sumaCaja(cajaDatos).hecho);
+  if (!confirm(`¿Vaciar la Caja de este mes? Se borrarán ${cajaDatos.length} servicios (${total}). No se puede deshacer.`)) return;
+  if (!confirm('¿Seguro? Última confirmación.')) return;
+  for (let i = 0; i < cajaDatos.length; i += 400) {
+    const batch = writeBatch(db);
+    cajaDatos.slice(i, i + 400).forEach(x => batch.delete(doc(db, 'caja', x.id)));
+    await batch.commit();
+  }
+};
+// ---------- CIERRE DEL MES EN PDF ----------
+async function cargarJsPDF() {
+  if (window.jspdf) return window.jspdf.jsPDF;
+  await new Promise((ok, ko) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+    sc.onload = ok; sc.onerror = ko; document.head.appendChild(sc);
+  });
+  return window.jspdf.jsPDF;
+}
+$('cajaPdf').onclick = async () => {
+  const btn = $('cajaPdf'), txtBtn = btn.textContent;
+  if (!cajaDatos.length && !confirm('Este mes no tiene servicios. ¿Generar el PDF igualmente?')) return;
+  btn.disabled = true; btn.textContent = 'Generando PDF…';
+  try {
+    const jsPDF = await cargarJsPDF();
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4' });
+    const W = 210, M = 15, marron = [138, 90, 68], gris = [120, 112, 106];
+    const mes = $('cajaMes').value;
+    const nombreMes = new Date(mes + '-15T12:00:00').toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+    const negocio = (cfg.nombre || 'Mismasajes').replace(/[^\x20-\xFF€]/g, '').trim();
+    const t = sumaCaja(cajaDatos);
+    const limpio = v => String(v ?? '').replace(/[^\x20-\xFF€]/g, '').trim();
+    const corta = (txt, ancho) => { txt = limpio(txt); while (txt && pdf.getTextWidth(txt) > ancho) txt = txt.slice(0, -1); return txt; };
+
+    // Cabecera
+    pdf.setFillColor(...marron); pdf.rect(0, 0, W, 30, 'F');
+    pdf.setTextColor(255); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(18); pdf.text(negocio, M, 14);
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(12);
+    pdf.text('Cierre de caja · ' + nombreMes.charAt(0).toUpperCase() + nombreMes.slice(1), M, 23);
+
+    // Resumen
+    let y = 42;
+    pdf.setTextColor(43, 36, 32); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(13); pdf.text('Resumen', M, y);
+    y += 3; pdf.setDrawColor(230, 220, 212); pdf.setFillColor(251, 248, 245); pdf.roundedRect(M, y, W - 2 * M, 30, 3, 3, 'FD');
+    pdf.setFontSize(10); pdf.setFont('helvetica', 'normal'); pdf.setTextColor(...gris);
+    pdf.text('TOTAL COBRADO', M + 6, y + 9);
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(20); pdf.setTextColor(...marron); pdf.text(eur(t.hecho), M + 6, y + 20);
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(10); pdf.setTextColor(43, 36, 32);
+    const col2 = M + 95;
+    pdf.text(`Masajes realizados: ${t.nHecho}`, col2, y + 8);
+    pdf.text(`Precio de tarifa: ${eur(t.tarifa)}`, col2, y + 14);
+    pdf.text(`Descuentos: -${eur(t.desc)}`, col2, y + 20);
+    pdf.text(`Desplazamientos: +${eur(t.sup)}`, col2, y + 26);
+    y += 40;
+
+    // Por tipo de masaje
+    const tipos = {};
+    cajaDatos.forEach(x => { const k = x.servicio || '-'; tipos[k] = tipos[k] || { n: 0, s: 0 }; tipos[k].n++; tipos[k].s += Number(x.importe) || 0; });
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(13); pdf.text('Por tipo de masaje', M, y); y += 7;
+    pdf.setFontSize(10);
+    Object.entries(tipos).sort((a, b) => b[1].s - a[1].s).forEach(([k, v]) => {
+      pdf.setFont('helvetica', 'normal'); pdf.text(corta(k, 100), M + 2, y);
+      pdf.setTextColor(...gris); pdf.text(`x ${v.n}`, M + 120, y, { align: 'right' }); pdf.setTextColor(43, 36, 32);
+      pdf.setFont('helvetica', 'bold'); pdf.text(eur(r2(v.s)), W - M, y, { align: 'right' });
+      y += 6;
+    });
+    if (!cajaDatos.length) { pdf.setFont('helvetica', 'normal'); pdf.text('Sin servicios este mes.', M + 2, y); y += 6; }
+    y += 6;
+
+    // Detalle
+    const cols = [['Fecha', 18, 'l'], ['Hora', 13, 'l'], ['Masaje', 42, 'l'], ['Cliente', 42, 'l'],
+                  ['Precio', 16, 'r'], ['Desc.', 16, 'r'], ['Supl.', 16, 'r'], ['Cobrado', 17, 'r']];
+    const cabeceraTabla = () => {
+      pdf.setFillColor(...marron); pdf.rect(M, y - 5, W - 2 * M, 7, 'F');
+      pdf.setTextColor(255); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9);
+      let x = M; cols.forEach(([n, w, a]) => { pdf.text(n, a === 'r' ? x + w - 1.5 : x + 1.5, y, { align: a === 'r' ? 'right' : 'left' }); x += w; });
+      pdf.setTextColor(43, 36, 32); pdf.setFont('helvetica', 'normal'); y += 7;
+    };
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(13); pdf.text('Detalle de servicios', M, y); y += 8;
+    cabeceraTabla();
+    const pieY = 285;
+    cajaDatos.forEach((x, i) => {
+      if (y > pieY - 12) { pdf.addPage(); y = 20; cabeceraTabla(); }
+      if (i % 2) { pdf.setFillColor(246, 239, 233); pdf.rect(M, y - 4.5, W - 2 * M, 6.5, 'F'); }
+      const fila = [new Date(x.fecha + 'T12:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }), toHM(x.ini),
+        x.servicio, x.nombre, eur(precioDe(x)), Number(x.descuento) ? '-' + eur(Number(x.descuento)) : '',
+        Number(x.suplemento) ? '+' + eur(Number(x.suplemento)) : '', eur(Number(x.importe) || 0)];
+      pdf.setFontSize(9);
+      let cx = M;
+      cols.forEach(([, w, a], k) => {
+        pdf.setFont('helvetica', k === 7 ? 'bold' : 'normal');
+        const v = corta(fila[k], w - 3);
+        pdf.text(v, a === 'r' ? cx + w - 1.5 : cx + 1.5, y, { align: a === 'r' ? 'right' : 'left' });
+        cx += w;
+      });
+      y += 6.5;
+    });
+    // Fila de totales
+    if (y > pieY - 12) { pdf.addPage(); y = 20; }
+    pdf.setDrawColor(...marron); pdf.setLineWidth(0.4); pdf.line(M, y - 4, W - M, y - 4);
+    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9.5);
+    let tx = M + 18 + 13 + 42 + 42;
+    [eur(t.tarifa), t.desc ? '-' + eur(t.desc) : '', t.sup ? '+' + eur(t.sup) : '', eur(t.hecho)].forEach((v, k) => {
+      const w = [16, 16, 16, 17][k]; pdf.text(v, tx + w - 1.5, y + 1, { align: 'right' }); tx += w;
+    });
+    pdf.text('TOTAL', M + 1.5, y + 1);
+
+    // Pie en todas las páginas
+    const n = pdf.getNumberOfPages(), ahora = new Date().toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+    for (let i = 1; i <= n; i++) {
+      pdf.setPage(i); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(...gris);
+      pdf.text(`${negocio} · Cierre de caja ${nombreMes} · Generado el ${ahora}`, M, 292);
+      pdf.text(`Página ${i} de ${n}`, W - M, 292, { align: 'right' });
+    }
+    pdf.save(`cierre-caja-${mes}.pdf`);
+  } catch (e) {
+    console.error(e); alert('No se pudo generar el PDF. Revisa la conexión e inténtalo otra vez.');
+  } finally { btn.disabled = false; btn.textContent = txtBtn; }
+};
+
 $('cajaCsv').onclick = () => {
   const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const n = v => String(Number(v) || 0).replace('.', ',');
   const filas = cajaDatos.map(x => [x.fecha, toHM(x.ini), x.servicio, x.nombre, LUGAR_TXT[x.lugar] || x.lugar,
-    String(Number(x.importe) || 0).replace('.', ',')].map(q).join(';'));
-  const total = sumaCaja(cajaDatos).hecho;
-  descargar(`caja-${$('cajaMes').value}.csv`, '﻿' + [['Fecha', 'Hora', 'Masaje', 'Cliente', 'Lugar', 'Importe'].map(q).join(';'), ...filas,
-    ['', '', '', '', 'TOTAL', String(total).replace('.', ',')].map(q).join(';')].join('\r\n'), 'text/csv;charset=utf-8');
+    n(precioDe(x)), n(x.descuento), n(x.suplemento), n(x.importe), x.ajusteTxt || ''].map(q).join(';'));
+  const t = sumaCaja(cajaDatos);
+  descargar(`caja-${$('cajaMes').value}.csv`, '\uFEFF' + [['Fecha', 'Hora', 'Masaje', 'Cliente', 'Lugar', 'Precio', 'Descuento', 'Suplemento', 'Cobrado', 'Nota'].map(q).join(';'), ...filas,
+    ['', '', '', '', 'TOTAL', n(t.tarifa), n(t.desc), n(t.sup), n(t.hecho), ''].map(q).join(';')].join('\r\n'), 'text/csv;charset=utf-8');
 };
 
 function escucharPendientes() {

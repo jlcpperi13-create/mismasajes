@@ -68,6 +68,10 @@
   .alerta { background:#fdecea; color:var(--mal); border-radius:10px; padding:10px; margin-top:10px; font-size:.92rem; }
   .exito { background:#e3f1e4; color:var(--ok); border-radius:10px; padding:10px; margin-top:10px; font-size:.92rem; }
   .dia { display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:6px; align-items:center; margin-bottom:6px; }
+  .trad { grid-column:1 / -1; margin:-2px 0 6px; }
+  .trad summary { color:var(--gris); font-size:.9rem; cursor:pointer; padding:4px 0; }
+  .trad .fila { display:grid; grid-template-columns:auto 1fr; gap:6px 8px; align-items:center; margin-top:6px; }
+  .trad .fila span { font-size:1.05rem; }
   .serv { display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:6px; align-items:center; margin-bottom:8px; }
   #login { max-width:380px; margin:40px auto; }
   .totales { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
@@ -195,6 +199,8 @@
         <h2>Ajustes</h2>
         <label>Nombre que ven los clientes</label><input id="aNombre">
         <label>Mensaje de bienvenida (opcional)</label><input id="aMensaje">
+        <details class="trad"><summary>🌍 Mensaje en otros idiomas (opcional)</summary>
+          <div class="fila" id="aMensajesTrad"></div></details>
         <label style="display:flex;align-items:center;margin-top:14px"><input type="checkbox" id="aPrecios">Mostrar precios a los clientes</label>
         <label style="display:flex;align-items:center"><input type="checkbox" id="aAuto">Confirmar reservas automáticamente</label>
         <p class="aviso" style="margin-top:2px">Si está desmarcado, cada reserva te llega como pendiente y la confirmas tú.</p>
@@ -440,7 +446,7 @@ function tarjetaCita(c, conFecha = false) {
       <span style="flex:0"><span class="estado ${c.estado}">${c.estado}</span></span>
     </div>
     <div><b>${esc(c.servicio)}</b>${c.precio ? ` · ${esc(c.precio)} €` : ''}</div>
-    <div class="meta">👤 ${esc(c.nombre)} · ${esc(c.telefono)}${c.email ? `<br>✉️ ${esc(c.email)}` : ''}<br>
+    <div class="meta">👤 ${esc(c.nombre)}${c.idioma && c.idioma !== 'es' ? ` <span title="Reservó en otro idioma">${({ en: '🇬🇧', fr: '🇫🇷', it: '🇮🇹', de: '🇩🇪', pt: '🇵🇹' })[c.idioma] || ''}</span>` : ''} · ${esc(c.telefono)}${c.email ? `<br>✉️ ${esc(c.email)}` : ''}<br>
       📍 ${LUGAR_TXT[c.lugar] || ''}${c.direccion ? ': ' + esc(c.direccion) : ''}
       ${c.notas ? `<br>📝 ${esc(c.notas)}` : ''}
       ${c.estado === 'realizada' && c.cobrado !== undefined && c.cobrado !== importe(c) ? `<br>💶 Cobrado <b>${eur(c.cobrado)}</b> <span class="tachado">${eur(importe(c))}</span>${c.ajusteTxt ? ' (' + esc(c.ajusteTxt) + ')' : ''}` : ''}
@@ -994,12 +1000,19 @@ async function cargarServicios() {
   $('nServ').innerHTML = servicios.filter(x => x.activo !== false)
     .map(x => `<option value="${x.id}">${esc(x.nombre)} (${x.duracion} min)</option>`).join('');
 }
+// Idiomas de la página de clientes (además del español). Si no traduces un nombre, sale el inglés; si tampoco, el español.
+const IDIOMAS_EXT = [['en', '🇬🇧', 'English: Relaxing'], ['fr', '🇫🇷', 'Français: Relaxant'], ['it', '🇮🇹', 'Italiano: Rilassante'],
+                     ['de', '🇩🇪', 'Deutsch: Entspannend'], ['pt', '🇵🇹', 'Português: Relaxante']];
 function filaServicio(s = {}) {
   return `<div class="serv" data-id="${s.id || ''}">
     <input class="sN" placeholder="Ej: Relajante" value="${esc(s.nombre || '')}">
     <input class="sD" type="number" min="10" step="5" value="${s.duracion || 60}">
     <input class="sP" placeholder="—" value="${esc(s.precio || '')}">
-    <button class="btn mal peq sX">✕</button></div>`;
+    <button class="btn mal peq sX">✕</button>
+    <details class="trad">
+      <summary>🌍 Nombre en otros idiomas (opcional)${IDIOMAS_EXT.filter(([l]) => s['nombre_' + l]).length ? ` · ${IDIOMAS_EXT.filter(([l]) => s['nombre_' + l]).length} traducidos` : ''}</summary>
+      <div class="fila">${IDIOMAS_EXT.map(([l, b, ph]) => `<span>${b}</span><input class="sT" data-l="${l}" placeholder="${ph}" value="${esc(s['nombre_' + l] || '')}">`).join('')}</div>
+    </details></div>`;
 }
 function pintarServicios() {
   $('sLista').innerHTML = servicios.map(filaServicio).join('') || filaServicio();
@@ -1016,8 +1029,10 @@ $('sGuardar').onclick = async () => {
     const nombre = f.querySelector('.sN').value.trim(); if (!nombre) return;
     const ref = f.dataset.id ? doc(db, 'servicios', f.dataset.id) : doc(collection(db, 'servicios'));
     vivos.add(ref.id);
+    const trad = {};
+    f.querySelectorAll('.sT').forEach(x => { const v = x.value.trim(); if (v) trad['nombre_' + x.dataset.l] = v; });
     batch.set(ref, { nombre, duracion: Number(f.querySelector('.sD').value) || 60,
-      precio: f.querySelector('.sP').value.trim(), activo: true, orden: i });
+      precio: f.querySelector('.sP').value.trim(), activo: true, orden: i, ...trad });
   });
   servicios.forEach(s => { if (!vivos.has(s.id)) batch.delete(doc(db, 'servicios', s.id)); });
   await batch.commit(); await cargarServicios(); flash('sMsg');
@@ -1026,6 +1041,7 @@ $('sGuardar').onclick = async () => {
 // ---------- AJUSTES ----------
 function pintarAjustes() {
   $('aNombre').value = cfg.nombre || ''; $('aMensaje').value = cfg.mensaje || '';
+  $('aMensajesTrad').innerHTML = IDIOMAS_EXT.map(([l, b]) => `<span>${b}</span><input class="aMT" data-l="${l}" value="${esc(cfg['mensaje_' + l] || '')}">`).join('');
   $('aPrecios').checked = cfg.mostrarPrecios !== false; $('aAuto').checked = !!cfg.autoConfirmar;
   $('aHotel').checked = !!cfg.lugares?.hotel; $('aDom').checked = !!cfg.lugares?.domicilio; $('aCentro').checked = !!cfg.lugares?.centro;
   $('aMargen').value = cfg.margen ?? 30; $('aIntervalo').value = String(cfg.intervalo ?? 30);
@@ -1037,6 +1053,7 @@ function pintarAjustes() {
 $('aGuardar').onclick = async () => {
   const cambios = {
     nombre: $('aNombre').value.trim() || 'Reserva tu masaje', mensaje: $('aMensaje').value.trim(),
+    ...Object.fromEntries([...document.querySelectorAll('.aMT')].map(x => ['mensaje_' + x.dataset.l, x.value.trim()])),
     mostrarPrecios: $('aPrecios').checked, autoConfirmar: $('aAuto').checked,
     lugares: { hotel: $('aHotel').checked, domicilio: $('aDom').checked, centro: $('aCentro').checked },
     margen: Number($('aMargen').value) || 0, intervalo: Number($('aIntervalo').value) || 30,

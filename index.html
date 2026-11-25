@@ -52,6 +52,7 @@
   .cajaCancel textarea { margin-top:6px; }
   .limite { font-size:.82rem; color:var(--gris); margin-top:6px; }
   .anteriores summary { cursor:pointer; color:var(--gris); font-size:.92rem; padding:6px 0; }
+  .selIdioma { margin-top:12px; width:auto; padding:7px 12px; border-radius:20px; border:0; font-size:.95rem; background:#fff; color:var(--c); font-weight:600; }
   .privacidad { margin-top:14px; }
   .check { display:flex; gap:10px; align-items:flex-start; color:var(--txt); font-size:.92rem; margin:0; }
   .check input { width:auto; margin-top:3px; transform:scale(1.3); flex:0 0 auto; }
@@ -64,63 +65,64 @@
 <header>
   <h1 id="titulo">Reserva tu masaje</h1>
   <p id="subtitulo"></p>
-  <button id="btnInstalar" class="hidden" style="margin-top:12px;background:#fff;color:var(--c);border:0;border-radius:20px;padding:8px 16px;font-weight:600;font-size:.9rem">📲 Instalar la app</button>
+  <select id="selIdioma" class="selIdioma" aria-label="Idioma / Language"></select>
+  <button id="btnInstalar" class="hidden" style="margin-top:12px;background:#fff;color:var(--c);border:0;border-radius:20px;padding:8px 16px;font-weight:600;font-size:.9rem" data-i18n="instalar">📲 Instalar la app</button>
 </header>
 <main>
   <section id="misCitas" class="card hidden">
-    <h2>Tus citas</h2>
+    <h2 data-i18n="tusCitas">Tus citas</h2>
     <div id="listaMisCitas"></div>
     <p id="contactoCambio" class="aviso contacto"></p>
   </section>
 
   <section id="bannerEdit" class="card hidden" style="background:#fdf0d5">
-    <b>✏️ Modificando tu cita</b>
+    <b data-i18n="modificando">✏️ Modificando tu cita</b>
     <p id="bannerEditTxt" class="aviso" style="margin:4px 0 10px"></p>
-    <p class="aviso" style="margin:0 0 10px">Cambia lo que necesites y pulsa <b>Guardar cambios</b> al final.</p>
-    <button type="button" class="quitar" id="salirEdit">✕ Salir sin cambiar</button>
+    <p class="aviso" style="margin:0 0 10px" data-i18n-html="modificandoAyuda"></p>
+    <button type="button" class="quitar" id="salirEdit" data-i18n="salirSinCambiar">✕ Salir sin cambiar</button>
   </section>
 
   <section id="paso1" class="card">
-    <h2>1. Elige el masaje</h2>
-    <div id="listaServicios"><p class="aviso">Cargando…</p></div>
+    <h2 data-i18n="paso1">1. Elige el masaje</h2>
+    <div id="listaServicios"><p class="aviso" data-i18n="cargando">Cargando…</p></div>
   </section>
 
   <section id="paso2" class="card hidden">
-    <h2>2. Elige el día</h2>
+    <h2 data-i18n="paso2">2. Elige el día</h2>
     <div id="dias" class="scroll-row"></div>
   </section>
 
   <section id="paso3" class="card hidden">
-    <h2>3. Elige la hora</h2>
+    <h2 data-i18n="paso3">3. Elige la hora</h2>
     <div id="horas" class="grid"></div>
   </section>
 
   <section id="paso4" class="card hidden">
-    <h2>4. Tus datos</h2>
+    <h2 data-i18n="paso4">4. Tus datos</h2>
     <div id="resumen" class="resumen"></div>
     <form id="form">
-      <label for="nombre">Nombre</label>
+      <label for="nombre" data-i18n="nombre">Nombre</label>
       <input id="nombre" required maxlength="80" autocomplete="name">
-      <label for="telefono">Teléfono</label>
+      <label for="telefono" data-i18n="telefono">Teléfono</label>
       <input id="telefono" type="tel" required maxlength="25" autocomplete="tel">
       <div id="bloqueEmail">
-        <label for="email">Correo electrónico (opcional, para enviarte un recordatorio)</label>
+        <label for="email" data-i18n="emailOpc">Correo electrónico (opcional, para enviarte un recordatorio)</label>
         <input id="email" type="email" maxlength="120" autocomplete="email">
       </div>
-      <label for="lugar">¿Dónde?</label>
+      <label for="lugar" data-i18n="donde">¿Dónde?</label>
       <select id="lugar"></select>
       <div id="bloqueDireccion">
         <label for="direccion" id="lblDireccion">Dirección</label>
         <input id="direccion" maxlength="200">
       </div>
-      <label for="notas">Comentarios (opcional)</label>
-      <textarea id="notas" rows="2" maxlength="300" placeholder="Ej: prefiero por la tarde, tengo aparcamiento…"></textarea>
+      <label for="notas" data-i18n="comentarios">Comentarios (opcional)</label>
+      <textarea id="notas" rows="2" maxlength="300" data-i18n-ph="comentariosPh"></textarea>
       <div class="privacidad">
         <label class="check"><input type="checkbox" id="acepto" required>
-          <span>He leído y acepto la <a href="#" id="verPriv">política de privacidad</a></span></label>
+          <span data-i18n-html="acepto">He leído y acepto la <a href="#" id="verPriv">política de privacidad</a></span></label>
         <div id="textoPriv" class="textoPriv hidden"></div>
       </div>
-      <button class="btn" id="btnEnviar" type="submit">Solicitar reserva</button>
+      <button class="btn" id="btnEnviar" type="submit" data-i18n="solicitar">Solicitar reserva</button>
       <p id="error" class="error"></p>
     </form>
   </section>
@@ -133,10 +135,23 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getFirestore, doc, getDoc, collection, getDocs, query, where, writeBatch, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import * as CFG from "./firebase-config.js";
+import { IDIOMAS, detectarIdioma } from "./idiomas.js";
 const { firebaseConfig } = CFG;
 
 const db = getFirestore(initializeApp(firebaseConfig));
 const $ = id => document.getElementById(id);
+
+// ---------- IDIOMAS ----------
+const LANG = detectarIdioma(), TX = IDIOMAS[LANG], LOC = TX._locale;
+const t = (k, v = {}) => { const x = TX[k] ?? IDIOMAS.es[k] ?? k; return typeof x === 'function' ? x(v) : String(x).replace(/\{(\w+)\}/g, (_, n) => v[n] ?? ''); };
+document.documentElement.lang = LANG;
+document.querySelectorAll('[data-i18n]').forEach(e => e.textContent = t(e.dataset.i18n));
+document.querySelectorAll('[data-i18n-html]').forEach(e => e.innerHTML = t(e.dataset.i18nHtml));
+document.querySelectorAll('[data-i18n-ph]').forEach(e => e.placeholder = t(e.dataset.i18nPh));
+$('selIdioma').innerHTML = Object.entries(IDIOMAS).map(([k, d]) => `<option value="${k}" ${k === LANG ? 'selected' : ''}>${d._bandera} ${d._nombre}</option>`).join('');
+$('selIdioma').onchange = () => { try { localStorage.setItem('idioma', $('selIdioma').value); } catch {} location.reload(); };
+// Nombre del masaje en el idioma del cliente (si ella lo tradujo; si no, inglés; si no, español)
+const nomServ = x => !x ? '' : (LANG === 'es' ? x.nombre : (x['nombre_' + LANG] || x.nombre_en || x.nombre));
 
 // ---------- app instalable (alcance solo index.html, separado del panel) ----------
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { scope: './index.html' }).catch(console.error);
@@ -153,15 +168,15 @@ window.addEventListener('appinstalled', () => $('btnInstalar').classList.add('hi
 const toMin = s => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
 const toHM = m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
 const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const DIAS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const corto = (d, o) => d.toLocaleDateString(LOC, o).replace('.', '');
 // ---------- "Tus citas": se guardan en este móvil ----------
 const leerMias = () => { try { return JSON.parse(localStorage.getItem('misCitas') || '[]'); } catch { return []; } };
 const guardarMias = l => { try { localStorage.setItem('misCitas', JSON.stringify(l)); } catch {} };
-const fechaLarga = f => new Date(f + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+const fechaLarga = f => new Date(f + 'T12:00:00').toLocaleDateString(LOC, { weekday: 'long', day: 'numeric', month: 'long' });
+const fechaHora = (f, ini) => t('fechaHora', { fecha: fechaLarga(f), hora: toHM(ini) });
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-const LUGARES = { hotel: 'En mi hotel', domicilio: 'En mi domicilio', centro: 'En el centro' };
+const LUGARES = { hotel: t('lugarHotel'), domicilio: t('lugarDomicilio'), centro: t('lugarCentro') };
 
 // Calcula los huecos libres de un día para un masaje de "dur" minutos
 function huecos(cfg, fecha, dur, ocupados, bloqueos) {
@@ -202,11 +217,11 @@ let editando = null;   // { id, dato } cuando el cliente está modificando una c
 
 async function init() {
   const c = await getDoc(doc(db, 'config', 'ajustes'));
-  if (!c.exists()) { $('listaServicios').innerHTML = '<p class="aviso">Las reservas aún no están abiertas.</p>'; return; }
+  if (!c.exists()) { $('listaServicios').innerHTML = `<p class="aviso">${t('noAbiertas')}</p>`; return; }
   cfg = c.data();
-  $('titulo').textContent = cfg.nombre || 'Reserva tu masaje';
-  document.title = cfg.nombre || 'Reserva tu masaje';
-  $('subtitulo').textContent = cfg.mensaje || '';
+  $('titulo').textContent = cfg.nombre || t('tituloDefecto');
+  document.title = cfg.nombre || t('tituloDefecto');
+  $('subtitulo').textContent = (LANG === 'es' ? cfg.mensaje : (cfg['mensaje_' + LANG] || cfg.mensaje_en || cfg.mensaje)) || '';
 
   const s = await getDocs(collection(db, 'servicios'));
   servicios = s.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.activo !== false)
@@ -222,34 +237,29 @@ async function init() {
 }
 
 function pintarPrivacidad() {
-  const resp = esc(cfg.responsable || cfg.nombre || '');
-  const nif = cfg.nif ? ` (NIF ${esc(cfg.nif)})` : '';
-  const dir = cfg.direccionPriv ? `, ${esc(cfg.direccionPriv)}` : '';
   const mail = esc(cfg.emailPriv || '');
-  $('textoPriv').innerHTML = `
-    <p><b>Información básica sobre protección de datos</b></p>
-    <p><b>Responsable:</b> ${resp}${nif}${dir}.${mail ? ` Contacto: <a href="mailto:${mail}">${mail}</a>` : ''}</p>
-    <p><b>Finalidad:</b> gestionar tu reserva, confirmarla, enviarte un recordatorio y contactarte sobre ella.</p>
-    <p><b>Legitimación:</b> tu consentimiento y la prestación del servicio que solicitas.</p>
-    <p><b>Conservación:</b> mientras dure la relación y, después, durante los plazos legales obligatorios.</p>
-    <p><b>Destinatarios:</b> no se ceden datos a terceros salvo obligación legal. Los datos se alojan en Google Firebase (Google Ireland Ltd.) como encargado del tratamiento, en servidores de la UE${cfg.recordatoriosEmail ? '; los recordatorios por correo se envían a través de Gmail (Google)' : ''}${cfg.recordatoriosSMS ? ', y los recordatorios por SMS se envían a través de Instasent, también como encargado del tratamiento' : ''}.</p>
-    <p><b>Derechos:</b> puedes acceder, rectificar, suprimir, oponerte, limitar el tratamiento y pedir la portabilidad de tus datos${mail ? ` escribiendo a <a href="mailto:${mail}">${mail}</a>` : ' contactando con la responsable'}. También puedes reclamar ante la Agencia Española de Protección de Datos (<a href="https://www.aepd.es" target="_blank" rel="noopener">aepd.es</a>).</p>
-    <p>Por favor, no incluyas datos de salud en los comentarios; coméntalos directamente en la sesión.</p>`;
+  $('textoPriv').innerHTML = t('priv', {
+    resp: esc(cfg.responsable || cfg.nombre || ''),
+    nif: cfg.nif ? ` (NIF ${esc(cfg.nif)})` : '',
+    dir: cfg.direccionPriv ? `, ${esc(cfg.direccionPriv)}` : '',
+    mail: mail ? `<a href="mailto:${mail}">${mail}</a>` : '',
+    email: !!cfg.recordatoriosEmail, sms: !!cfg.recordatoriosSMS
+  });
 }
 $('verPriv').onclick = e => { e.preventDefault(); $('textoPriv').classList.toggle('hidden'); };
 
 function ajustarDireccion() {
   const v = $('lugar').value;
   $('bloqueDireccion').classList.toggle('hidden', v === 'centro');
-  $('lblDireccion').textContent = v === 'hotel' ? 'Hotel y nº de habitación' : 'Dirección completa';
+  $('lblDireccion').textContent = v === 'hotel' ? t('hotelHab') : t('direccionCompleta');
   $('direccion').required = v !== 'centro';
 }
 
 function pintarServicios() {
-  if (!servicios.length) { $('listaServicios').innerHTML = '<p class="aviso">Aún no hay masajes disponibles.</p>'; return; }
+  if (!servicios.length) { $('listaServicios').innerHTML = `<p class="aviso">${t('noMasajes')}</p>`; return; }
   $('listaServicios').innerHTML = servicios.map(s => `
     <button class="opcion ${sel.servicio?.id === s.id ? 'sel' : ''}" data-id="${s.id}">
-      <span>${esc(s.nombre)}<small>${s.duracion} min</small></span>
+      <span>${esc(nomServ(s))}<small>${s.duracion} min</small></span>
       ${cfg.mostrarPrecios !== false && s.precio ? `<b>${esc(s.precio)} €</b>` : ''}
     </button>`).join('');
   $('listaServicios').querySelectorAll('button').forEach(b => b.onclick = () => {
@@ -268,9 +278,9 @@ function pintarDias() {
     const d = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() + i);
     if (!cfg.horario?.[d.getDay()]?.activo) continue;
     const f = ymd(d);
-    html.push(`<button class="chip ${sel.fecha === f ? 'sel' : ''}" data-f="${f}">${i === 0 ? 'Hoy' : DIAS[d.getDay()]}<b>${d.getDate()}</b>${MESES[d.getMonth()]}</button>`);
+    html.push(`<button class="chip ${sel.fecha === f ? 'sel' : ''}" data-f="${f}">${i === 0 ? t('hoy') : corto(d, { weekday: 'short' }).slice(0, 4).replace(/(...)\w$/, '$1')}<b>${d.getDate()}</b>${corto(d, { month: 'short' })}</button>`);
   }
-  $('dias').innerHTML = html.join('') || '<p class="aviso">No hay días disponibles.</p>';
+  $('dias').innerHTML = html.join('') || `<p class="aviso">${t('noDias')}</p>`;
   $('dias').querySelectorAll('button').forEach(b => b.onclick = () => elegirDia(b.dataset.f));
 }
 
@@ -279,15 +289,15 @@ async function elegirDia(f) {
   pintarDias();
   $('paso4').classList.add('hidden');
   $('paso3').classList.remove('hidden');
-  $('horas').innerHTML = '<p class="aviso">Buscando huecos…</p>';
+  $('horas').innerHTML = `<p class="aviso">${t('buscando')}</p>`;
   const { ocupados, bloqueos } = await cargarDia(f);
   const libres = huecos(cfg, f, Number(sel.servicio.duracion), ocupados, bloqueos);
-  if (!libres.length) { $('horas').innerHTML = '<p class="aviso">No quedan huecos este día. Prueba con otro.</p>'; return; }
+  if (!libres.length) { $('horas').innerHTML = `<p class="aviso">${t('noHuecos')}</p>`; return; }
   $('horas').innerHTML = libres.map(t => `<button class="chip" data-t="${t}"><b>${toHM(t)}</b></button>`).join('');
   $('horas').querySelectorAll('button').forEach(b => b.onclick = () => {
     sel.hora = Number(b.dataset.t);
     $('horas').querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b));
-    $('resumen').innerHTML = `<b>${esc(sel.servicio.nombre)}</b> (${sel.servicio.duracion} min)<br>${fechaLarga(sel.fecha)} a las <b>${toHM(sel.hora)}</b>`;
+    $('resumen').innerHTML = `<b>${esc(nomServ(sel.servicio))}</b> (${sel.servicio.duracion} min)<br>${fechaHora(sel.fecha, sel.hora)}`;
     $('paso4').classList.remove('hidden');
     $('paso4').scrollIntoView({ behavior: 'smooth' });
   });
@@ -302,13 +312,13 @@ $('form').onsubmit = async e => {
     // Volvemos a comprobar que el hueco sigue libre
     const { ocupados, bloqueos } = await cargarDia(sel.fecha);
     if (!huecos(cfg, sel.fecha, dur, ocupados, bloqueos).includes(sel.hora)) {
-      $('error').textContent = 'Ese hueco se acaba de ocupar. Elige otra hora, por favor.';
+      $('error').textContent = t('huecoOcupado');
       elegirDia(sel.fecha);
       return;
     }
     if (editando) { await guardarCambios(dur); return; }
     const telNorm = $('telefono').value.replace(/\D/g, '');
-    if (telNorm.length < 9) { $('error').textContent = 'Revisa el teléfono, por favor.'; return; }
+    if (telNorm.length < 9) { $('error').textContent = t('revisaTel'); return; }
     const estado = cfg.autoConfirmar ? 'confirmada' : 'pendiente';
     const ref = doc(collection(db, 'citas'));
     const batch = writeBatch(db);
@@ -318,7 +328,7 @@ $('form').onsubmit = async e => {
       fecha: sel.fecha, ini: sel.hora, fin: sel.hora + dur,
       nombre: $('nombre').value.trim(), telefono: $('telefono').value.trim(), email: $('email').value.trim(), telNorm,
       lugar: $('lugar').value, direccion: $('direccion').value.trim(), notas: $('notas').value.trim(),
-      estado, origen: 'web', creado: serverTimestamp(),
+      estado, origen: 'web', creado: serverTimestamp(), idioma: LANG,
       aceptaPrivacidad: $('acepto').checked, fechaAceptacion: serverTimestamp()
     });
     batch.set(doc(db, 'ocupado', ref.id), { fecha: sel.fecha, ini: sel.hora, fin: sel.hora + dur });
@@ -331,18 +341,18 @@ $('form').onsubmit = async e => {
     $('hecho').classList.remove('hidden');
     $('hecho').innerHTML = `
       <div class="ok">✓</div>
-      <h2 style="text-align:center">${estado === 'confirmada' ? '¡Reserva confirmada!' : '¡Solicitud enviada!'}</h2>
-      <div class="resumen">${esc(sel.servicio.nombre)}<br>${fechaLarga(sel.fecha)} a las <b>${toHM(sel.hora)}</b></div>
-      <p class="aviso">${estado === 'confirmada' ? 'Te esperamos.' : 'Te contactaremos en breve para confirmarla.'}</p>
-      <p class="aviso">Puedes volver a ver tu cita cuando quieras abriendo esta misma página.</p>
-      <button class="btn" onclick="location.reload()">Ver mis citas / hacer otra reserva</button>`;
+      <h2 style="text-align:center">${estado === 'confirmada' ? t('reservaConfirmada') : t('solicitudEnviada')}</h2>
+      <div class="resumen">${esc(nomServ(sel.servicio))}<br>${fechaHora(sel.fecha, sel.hora)}</div>
+      <p class="aviso">${estado === 'confirmada' ? t('teEsperamos') : t('teContactaremos')}</p>
+      <p class="aviso">${t('puedesVolver')}</p>
+      <button class="btn" onclick="location.reload()">${t('verMisCitas')}</button>`;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (err) {
     console.error(err);
     if (err && err.code === 'permission-denied' && !editando) {
-      const t = cfg?.telefonoContacto;
-      $('error').innerHTML = 'No se ha podido completar la reserva online.' + (t ? ` Para reservar, contacta por teléfono: <a href="tel:${esc(t)}">${esc(t)}</a>.` : ' Para reservar, contacta por teléfono.');
-    } else $('error').textContent = 'No se pudo enviar. Revisa la conexión e inténtalo de nuevo.';
+      const tel = cfg?.telefonoContacto;
+      $('error').innerHTML = t('noCompletar') + ' ' + (tel ? t('contactaTel', { tel: `<a href="tel:${esc(tel)}">${esc(tel)}</a>` }) : t('contactaTelSin'));
+    } else $('error').textContent = t('errorEnvio');
   } finally {
     $('btnEnviar').disabled = false;
   }
@@ -353,21 +363,22 @@ const avisar = id => { if (CFG.FUNCION_URL) fetch(CFG.FUNCION_URL + '?accion=cam
 const horasHasta = d => (new Date(d.fecha + 'T' + toHM(d.ini) + ':00') - new Date()) / 3600000;
 const limiteHoras = () => { const n = Number(cfg?.limiteCambios); return isNaN(n) ? 24 : n; };
 const datosMias = {};
+const nomCita = d => nomServ(servicios.find(x => x.id === d.servicioId)) || d.servicio;
 
 async function empezarEdicion(id) {
   const dato = datosMias[id]; if (!dato) return;
-  if (horasHasta(dato) < limiteHoras()) { alert(`Faltan menos de ${limiteHoras()} h para tu cita. Para cambiarla, llama o escribe por WhatsApp.`); return; }
+  if (horasHasta(dato) < limiteHoras()) { alert(t('menosHorasAlert', { h: limiteHoras() })); return; }
   editando = { id, dato };
   $('misCitas').classList.add('hidden'); $('hecho').classList.add('hidden');
   $('bannerEdit').classList.remove('hidden');
-  $('bannerEditTxt').innerHTML = `Tu cita actual: <b>${esc(dato.servicio)}</b>, ${fechaLarga(dato.fecha)} a las <b>${toHM(dato.ini)}</b>.`;
+  $('bannerEditTxt').innerHTML = t('tuCitaActual', { servicio: esc(nomCita(dato)), fechaHora: fechaHora(dato.fecha, dato.ini) });
   // Rellenamos el formulario con sus datos
   $('nombre').value = dato.nombre || ''; $('telefono').value = dato.telefono || ''; $('email').value = dato.email || '';
   if ([...$('lugar').options].some(o => o.value === dato.lugar)) $('lugar').value = dato.lugar;
   ajustarDireccion();
   $('direccion').value = dato.direccion || ''; $('notas').value = dato.notas || '';
   $('acepto').checked = true;
-  $('btnEnviar').textContent = 'Guardar cambios';
+  $('btnEnviar').textContent = t('guardarCambios');
   // Masaje, día y hora actuales ya marcados
   sel.servicio = servicios.find(x => x.id === dato.servicioId) || null;
   sel.fecha = sel.hora = null;
@@ -406,10 +417,10 @@ async function guardarCambios(dur) {
   $('hecho').classList.remove('hidden');
   $('hecho').innerHTML = `
     <div class="ok">✓</div>
-    <h2 style="text-align:center">¡Cambios guardados!</h2>
-    <div class="resumen">${esc(sel.servicio.nombre)}<br>${fechaLarga(sel.fecha)} a las <b>${toHM(sel.hora)}</b></div>
-    <p class="aviso">${estado === 'pendiente' ? 'Tu cita queda <b>pendiente de confirmar</b>. Te avisaremos en breve.' : 'Tu cita sigue confirmada.'}</p>
-    <button class="btn" onclick="location.reload()">Volver a mis citas</button>`;
+    <h2 style="text-align:center">${t('cambiosGuardados')}</h2>
+    <div class="resumen">${esc(nomServ(sel.servicio))}<br>${fechaHora(sel.fecha, sel.hora)}</div>
+    <p class="aviso">${estado === 'pendiente' ? t('quedaPendiente') : t('sigueConfirmada')}</p>
+    <button class="btn" onclick="location.reload()">${t('volverMisCitas')}</button>`;
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -436,27 +447,27 @@ async function pintarMisCitas() {
     } catch { estado = '…'; }
     const pasada = x.fecha < hoyStr || estado === 'realizada';
     const txt = pasada && estado !== 'cancelada'
-      ? (estado === 'realizada' ? 'Realizada' : 'Pasada')
-      : ({ pendiente: 'Pendiente de confirmar', confirmada: 'Confirmada', cancelada: 'Cancelada' }[estado] || estado);
+      ? (estado === 'realizada' ? t('est_realizada') : t('est_pasada'))
+      : (['pendiente', 'confirmada', 'cancelada'].includes(estado) ? t('est_' + estado) : estado);
     const clase = pasada && estado !== 'cancelada' ? 'pasada' : estado;
     const quitable = pasada || estado === 'cancelada';
     datosMias[x.id] = { ...dato, estado };
     const editable = !pasada && (estado === 'pendiente' || estado === 'confirmada');
     const aTiempo = editable && horasHasta(dato) >= limiteHoras();
     const html = `<div class="micita ${clase}"><span class="etq ${clase}">${txt}</span>
-      <b>${esc(dato.servicio)}</b><br>${fechaLarga(dato.fecha)} a las <b>${toHM(dato.ini)}</b>
-      ${estado === 'cancelada' && dato.motivoCancelacion ? `<br><small>Motivo: ${esc(dato.motivoCancelacion)}</small>` : ''}
-      ${quitable ? `<div style="text-align:right;margin-top:6px"><button class="quitar" data-quitar="${esc(x.id)}">✕ Quitar</button></div>` : ''}
-      ${aTiempo ? `<div class="accionesCita"><button class="bMod" data-mod="${esc(x.id)}">✏️ Modificar</button><button class="bCan" data-can="${esc(x.id)}">Cancelar cita</button></div>
-        <div class="cajaCancel hidden" data-caja="${esc(x.id)}"><b style="color:#b3261e">¿Cancelar esta cita?</b>
-          <textarea rows="2" maxlength="200" placeholder="Motivo (opcional)"></textarea>
-          <div class="accionesCita"><button class="bCan" data-okcan="${esc(x.id)}">Sí, cancelar</button><button class="bMod" data-nocan="${esc(x.id)}">No, mantener</button></div></div>`
-        : editable ? `<div class="limite">Faltan menos de ${limiteHoras()} h: para cambios o cancelación, llama o escribe por WhatsApp.</div>` : ''}</div>`;
+      <b>${esc(nomCita(dato))}</b><br>${fechaHora(dato.fecha, dato.ini)}
+      ${estado === 'cancelada' && dato.motivoCancelacion ? `<br><small>${t('motivo')}: ${esc(dato.motivoCancelacion)}</small>` : ''}
+      ${quitable ? `<div style="text-align:right;margin-top:6px"><button class="quitar" data-quitar="${esc(x.id)}">${t('quitar')}</button></div>` : ''}
+      ${aTiempo ? `<div class="accionesCita"><button class="bMod" data-mod="${esc(x.id)}">${t('modificar')}</button><button class="bCan" data-can="${esc(x.id)}">${t('cancelarCita')}</button></div>
+        <div class="cajaCancel hidden" data-caja="${esc(x.id)}"><b style="color:#b3261e">${t('cancelarPregunta')}</b>
+          <textarea rows="2" maxlength="200" placeholder="${t('motivoOpc')}"></textarea>
+          <div class="accionesCita"><button class="bCan" data-okcan="${esc(x.id)}">${t('siCancelar')}</button><button class="bMod" data-nocan="${esc(x.id)}">${t('noMantener')}</button></div></div>`
+        : editable ? `<div class="limite">${t('menosHoras', { h: limiteHoras() })}</div>` : ''}</div>`;
     (pasada ? anteriores : proximas).push(html);
   }
   $('listaMisCitas').innerHTML =
-    (proximas.length ? proximas.join('') : '<p class="aviso">No tienes citas próximas.</p>') +
-    (anteriores.length ? `<details class="anteriores" ${proximas.length ? '' : 'open'}><summary>Citas anteriores (${anteriores.length})</summary>${anteriores.reverse().join('')}</details>` : '');
+    (proximas.length ? proximas.join('') : `<p class="aviso">${t('noProximas')}</p>`) +
+    (anteriores.length ? `<details class="anteriores" ${proximas.length ? '' : 'open'}><summary>${t('anteriores', { n: anteriores.length })}</summary>${anteriores.reverse().join('')}</details>` : '');
   const L = $('listaMisCitas');
   L.querySelectorAll('[data-mod]').forEach(b => b.onclick = () => empezarEdicion(b.dataset.mod));
   L.querySelectorAll('[data-can]').forEach(b => b.onclick = () => L.querySelector(`[data-caja="${b.dataset.can}"]`).classList.remove('hidden'));
@@ -464,20 +475,21 @@ async function pintarMisCitas() {
   L.querySelectorAll('[data-okcan]').forEach(b => b.onclick = async () => {
     b.disabled = true;
     try { await cancelarMia(b.dataset.okcan, L.querySelector(`[data-caja="${b.dataset.okcan}"] textarea`).value.trim()); }
-    catch (e) { console.error(e); alert('No se pudo cancelar. Revisa la conexión.'); b.disabled = false; }
+    catch (e) { console.error(e); alert(t('noCancelar')); b.disabled = false; }
   });
   $('listaMisCitas').querySelectorAll('[data-quitar]').forEach(b => b.onclick = () => {
     guardarMias(leerMias().filter(x => x.id !== b.dataset.quitar));
     pintarMisCitas();
   });
-  const t = cfg?.telefonoContacto;
-  $('contactoCambio').innerHTML = t && proximas.length
-    ? `¿Necesitas cambiarla o cancelarla? Llama al <a href="tel:${esc(t)}">${esc(t)}</a> o escribe por <a target="_blank" href="https://wa.me/${String(t).replace(/\D/g, '').replace(/^(\d{9})$/, '34$1')}">WhatsApp</a>.`
+  const tel = cfg?.telefonoContacto;
+  $('contactoCambio').innerHTML = tel && proximas.length
+    ? t('necesitasCambiar', { tel: `<a href="tel:${esc(tel)}">${esc(tel)}</a>`,
+        wa: `<a target="_blank" href="https://wa.me/${String(tel).replace(/\D/g, '').replace(/^(\d{9})$/, '34$1')}">WhatsApp</a>` })
     : '';
   $('misCitas').classList.remove('hidden');
 }
 
-init().then(pintarMisCitas).catch(err => { console.error(err); $('listaServicios').innerHTML = '<p class="error">No se pudo cargar. Inténtalo más tarde.</p>'; });
+init().then(pintarMisCitas).catch(err => { console.error(err); $('listaServicios').innerHTML = `<p class="error">${t('noCargar')}</p>`; });
 </script>
 </body>
 </html>
